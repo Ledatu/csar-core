@@ -1,6 +1,7 @@
 package s3store
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 )
@@ -60,4 +61,76 @@ func MarshalTokenObject(obj *TokenObject) ([]byte, error) {
 		return nil, fmt.Errorf("s3store: marshal token object: %w", err)
 	}
 	return data, nil
+}
+
+// DecodedToken is the result of decoding a TokenObject with a given KMS mode.
+type DecodedToken struct {
+	// Plaintext is the raw token value (passthrough mode only).
+	Plaintext string
+
+	// EncryptedToken is the raw ciphertext bytes after base64 decoding (kms mode only).
+	EncryptedToken []byte
+
+	// KMSKeyID is the KMS key used for encryption (kms mode only).
+	KMSKeyID string
+
+	// Passthrough is true when the token was stored in passthrough (SSE) mode.
+	Passthrough bool
+}
+
+// DecodeToken interprets a TokenObject according to the given kmsMode.
+//
+// In "passthrough" mode, obj.Plaintext is returned directly.
+// In "kms" mode, obj.EncryptedToken is base64-decoded and returned along with
+// the KMS key ID.
+func DecodeToken(obj *TokenObject, kmsMode string) (DecodedToken, error) {
+	switch kmsMode {
+	case "passthrough":
+		if obj.Plaintext == "" {
+			return DecodedToken{}, fmt.Errorf("s3store: passthrough mode requires \"plaintext\" field")
+		}
+		return DecodedToken{
+			Plaintext:   obj.Plaintext,
+			Passthrough: true,
+		}, nil
+
+	case "kms":
+		if obj.EncryptedToken == "" {
+			return DecodedToken{}, fmt.Errorf("s3store: kms mode requires \"enc_token\" field")
+		}
+		decoded, err := base64.StdEncoding.DecodeString(obj.EncryptedToken)
+		if err != nil {
+			return DecodedToken{}, fmt.Errorf("s3store: invalid base64 in enc_token: %w", err)
+		}
+		return DecodedToken{
+			EncryptedToken: decoded,
+			KMSKeyID:       obj.KMSKeyID,
+		}, nil
+
+	default:
+		return DecodedToken{}, fmt.Errorf("s3store: unknown kms_mode %q", kmsMode)
+	}
+}
+
+// EncodeToken builds a TokenObject from raw token data for the given kmsMode.
+//
+// In "passthrough" mode, the raw bytes are stored as a plaintext string.
+// In "kms" mode, the raw bytes are base64-encoded into EncryptedToken and the
+// KMS key ID is recorded.
+func EncodeToken(raw []byte, kmsKeyID string, kmsMode string) (TokenObject, error) {
+	switch kmsMode {
+	case "passthrough":
+		return TokenObject{
+			Plaintext: string(raw),
+		}, nil
+
+	case "kms":
+		return TokenObject{
+			EncryptedToken: base64.StdEncoding.EncodeToString(raw),
+			KMSKeyID:       kmsKeyID,
+		}, nil
+
+	default:
+		return TokenObject{}, fmt.Errorf("s3store: unknown kms_mode %q", kmsMode)
+	}
 }
