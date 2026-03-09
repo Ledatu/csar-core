@@ -1,11 +1,11 @@
 # csar-core
 
-[![CI](https://github.com/Ledatu/csar-core/actions/workflows/ci.yml/badge.svg)](https://github.com/Ledatu/csar-core/actions/workflows/ci.yml)
+[![CI](https://github.com/ledatu/csar-core/actions/workflows/ci.yml/badge.svg)](https://github.com/ledatu/csar-core/actions/workflows/ci.yml)
 
 Shared Go primitives for the csar service family. Provides pluggable config sourcing, S3-compatible storage, Yandex Cloud IAM auth, and safe secret handling.
 
 ```
-go get github.com/Ledatu/csar-core
+go get github.com/ledatu/csar-core
 ```
 
 Requires Go 1.25+.

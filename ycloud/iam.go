@@ -19,7 +19,7 @@ import (
 	jwtlib "github.com/golang-jwt/jwt/v5"
 	"golang.org/x/sync/singleflight"
 
-	"github.com/Ledatu/csar-core/secret"
+	"github.com/ledatu/csar-core/secret"
 )
 
 // AuthConfig is the shared authentication configuration for Yandex Cloud services.

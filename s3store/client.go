@@ -24,7 +24,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
-	"github.com/Ledatu/csar-core/ycloud"
+	"github.com/ledatu/csar-core/ycloud"
 )
 
 // maxObjectSize is the maximum allowed object body size (10 MB).

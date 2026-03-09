@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/Ledatu/csar-core/s3store"
-	"github.com/Ledatu/csar-core/secret"
-	"github.com/Ledatu/csar-core/ycloud"
+	"github.com/ledatu/csar-core/s3store"
+	"github.com/ledatu/csar-core/secret"
+	"github.com/ledatu/csar-core/ycloud"
 )
 
 // SourceParams holds the flags/env vars needed to build a ConfigSource.
