@@ -70,7 +70,7 @@ type IAMTokenResolver struct {
 
 // NewIAMTokenResolver creates a resolver for the given auth config.
 // For "static" mode, returns nil (no IAM token needed).
-func NewIAMTokenResolver(cfg AuthConfig, client *http.Client) (*IAMTokenResolver, error) {
+func NewIAMTokenResolver(cfg *AuthConfig, client *http.Client) (*IAMTokenResolver, error) {
 	if client == nil {
 		client = &http.Client{Timeout: 10 * time.Second}
 	}

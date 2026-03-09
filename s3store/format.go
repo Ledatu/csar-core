@@ -54,7 +54,7 @@ func ParseTokenObject(data []byte) (TokenObject, error) {
 }
 
 // MarshalTokenObject serializes a TokenObject to JSON suitable for S3 storage.
-func MarshalTokenObject(obj TokenObject) ([]byte, error) {
+func MarshalTokenObject(obj *TokenObject) ([]byte, error) {
 	data, err := json.Marshal(obj)
 	if err != nil {
 		return nil, fmt.Errorf("s3store: marshal token object: %w", err)

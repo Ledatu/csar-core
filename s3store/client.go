@@ -73,7 +73,7 @@ type Client struct {
 }
 
 // NewClient creates an S3 client configured for the given storage backend.
-func NewClient(cfg Config, logger *slog.Logger) (*Client, error) {
+func NewClient(cfg *Config, logger *slog.Logger) (*Client, error) {
 	if cfg.Bucket == "" {
 		return nil, fmt.Errorf("s3store: bucket is required")
 	}
@@ -85,7 +85,7 @@ func NewClient(cfg Config, logger *slog.Logger) (*Client, error) {
 	}
 
 	c := &Client{
-		cfg:    cfg,
+		cfg:    *cfg,
 		logger: logger,
 	}
 
@@ -108,7 +108,7 @@ func NewClient(cfg Config, logger *slog.Logger) (*Client, error) {
 		c.s3Client = s3Client
 
 	case "iam_token", "oauth_token", "metadata", "service_account":
-		resolver, err := ycloud.NewIAMTokenResolver(cfg.Auth, nil)
+		resolver, err := ycloud.NewIAMTokenResolver(&cfg.Auth, nil)
 		if err != nil {
 			return nil, fmt.Errorf("s3store: %w", err)
 		}
