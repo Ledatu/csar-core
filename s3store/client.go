@@ -27,6 +27,10 @@ import (
 	"github.com/Ledatu/csar-core/ycloud"
 )
 
+// maxObjectSize is the maximum allowed object body size (10 MB).
+// Objects exceeding this limit are rejected to prevent unbounded memory growth.
+const maxObjectSize = 10 << 20
+
 // Config holds all S3 client configuration.
 type Config struct {
 	// Bucket name.
@@ -218,9 +222,12 @@ func (c *Client) getObjectSDK(ctx context.Context, key, tokenRef string) (Object
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxObjectSize+1))
 	if err != nil {
 		return ObjectEntry{}, fmt.Errorf("s3store: read object %q: %w", key, err)
+	}
+	if len(body) > maxObjectSize {
+		return ObjectEntry{}, fmt.Errorf("s3store: object %q exceeds max size (%d bytes)", key, maxObjectSize)
 	}
 
 	etag := ""
@@ -400,9 +407,12 @@ func (c *Client) getObjectIAM(ctx context.Context, key, tokenRef string) (Object
 		return ObjectEntry{}, fmt.Errorf("s3store: get %q: HTTP %d: %s", key, resp.StatusCode, string(b))
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxObjectSize+1))
 	if err != nil {
 		return ObjectEntry{}, fmt.Errorf("s3store: read %q: %w", key, err)
+	}
+	if len(body) > maxObjectSize {
+		return ObjectEntry{}, fmt.Errorf("s3store: object %q exceeds max size (%d bytes)", key, maxObjectSize)
 	}
 
 	etag := resp.Header.Get("ETag")

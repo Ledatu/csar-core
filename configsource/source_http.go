@@ -13,14 +13,16 @@ import (
 const maxConfigSize = 10 << 20
 
 // HTTPSource loads configuration from an HTTP(S) endpoint.
-// It supports ETag-based conditional fetches to avoid unnecessary transfers.
+// It supports ETag and Last-Modified conditional fetches to avoid
+// unnecessary transfers.
 type HTTPSource struct {
 	url        string
 	headers    map[string]string // extra headers (e.g., Authorization)
 	httpClient *http.Client
 
-	mu       sync.Mutex
-	lastETag string
+	mu            sync.Mutex
+	lastETag      string
+	lastModified  bool // true when lastETag was derived from Last-Modified
 }
 
 // defaultHTTPClient is used when the caller does not supply a client.
@@ -56,10 +58,17 @@ func (s *HTTPSource) Fetch(ctx context.Context) (FetchedConfig, error) {
 	}
 
 	s.mu.Lock()
-	if s.lastETag != "" {
-		req.Header.Set("If-None-Match", s.lastETag)
-	}
+	lastValidator := s.lastETag
+	isLastModified := s.lastModified
 	s.mu.Unlock()
+
+	if lastValidator != "" {
+		if isLastModified {
+			req.Header.Set("If-Modified-Since", lastValidator)
+		} else {
+			req.Header.Set("If-None-Match", lastValidator)
+		}
+	}
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
@@ -85,12 +94,15 @@ func (s *HTTPSource) Fetch(ctx context.Context) (FetchedConfig, error) {
 		}
 
 		etag := resp.Header.Get("ETag")
+		fromLastModified := false
 		if etag == "" {
 			etag = resp.Header.Get("Last-Modified")
+			fromLastModified = etag != ""
 		}
 
 		s.mu.Lock()
 		s.lastETag = etag
+		s.lastModified = fromLastModified
 		s.mu.Unlock()
 
 		return FetchedConfig{

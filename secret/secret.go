@@ -55,9 +55,11 @@ func (s Secret) IsEmpty() bool {
 	return s.value == ""
 }
 
-// MarshalText implements encoding.TextMarshaler for YAML/JSON marshal.
+// MarshalText implements encoding.TextMarshaler. Returns [REDACTED] to
+// prevent accidental secret exposure through JSON/YAML/text serialization.
+// Use Plaintext() when you need the actual value.
 func (s Secret) MarshalText() ([]byte, error) {
-	return []byte(s.value), nil
+	return []byte(redactedValue), nil
 }
 
 // UnmarshalText implements encoding.TextUnmarshaler for YAML/JSON unmarshal.
