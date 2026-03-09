@@ -16,7 +16,7 @@ type ApplyFunc func(ctx context.Context, data []byte) (changed bool, err error)
 // ConfigWatcher periodically polls a ConfigSource, validates integrity
 // via SHA-256 hashing, and delegates application to a caller-supplied
 // ApplyFunc. This keeps the watcher generic and reusable across all
-// services (csar, csar-auth, csar-authz, etc.).
+// services (csar, csar-authn, csar-authz, etc.).
 type ConfigWatcher struct {
 	source  ConfigSource
 	applyFn ApplyFunc
