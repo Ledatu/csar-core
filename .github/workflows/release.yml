@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test before release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run tests
+        run: go test -v -race -count=1 ./...
+
+  publish:
+    name: Publish to Go Module Proxy
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Request module proxy to fetch the new version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "Publishing github.com/Ledatu/csar-core@${TAG}"
+          curl -sf "https://proxy.golang.org/github.com/!ledatu/csar-core/@v/${TAG}.info" || echo "Module will be indexed on first fetch"
+          curl -sf "https://sum.golang.org/lookup/github.com/!ledatu/csar-core@${TAG}" || echo "Checksum DB will index on first fetch"
+          echo "Done — module is now available via: go get github.com/Ledatu/csar-core@${TAG}"
