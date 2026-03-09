@@ -4,7 +4,6 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
-	"crypto/elliptic"
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
@@ -262,19 +261,6 @@ func algToHash(alg string) crypto.Hash {
 		return crypto.SHA512
 	default:
 		return 0
-	}
-}
-
-func getCurve(crv string) (elliptic.Curve, error) {
-	switch crv {
-	case "P-256":
-		return elliptic.P256(), nil
-	case "P-384":
-		return elliptic.P384(), nil
-	case "P-521":
-		return elliptic.P521(), nil
-	default:
-		return nil, fmt.Errorf("unsupported EC curve: %s", crv)
 	}
 }
 
