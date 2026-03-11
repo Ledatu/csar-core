@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ledatu/csar-core/actions/workflows/ci.yml/badge.svg)](https://github.com/ledatu/csar-core/actions/workflows/ci.yml)
 
-Shared Go primitives for the csar service family. Provides pluggable config sourcing, S3-compatible storage, Yandex Cloud IAM auth, and safe secret handling.
+Shared Go primitives for the csar service family. Provides pluggable config sourcing, PostgreSQL utilities, S3-compatible storage, Yandex Cloud IAM auth, and safe secret handling.
 
 ```
 go get github.com/ledatu/csar-core
@@ -13,6 +13,37 @@ Requires Go 1.25+.
 ---
 
 ## Packages
+
+### `pgutil` — PostgreSQL connection pool, migrations, and helpers
+
+Shared database primitives used by csar-authn, csar-authz, and other services.
+
+```go
+pool, err := pgutil.NewPool(ctx, dsn,
+    pgutil.WithLogger(logger),
+    pgutil.WithMaxConns(10),
+)
+
+err = pgutil.RunMigrations(ctx, pool, "my_schema_migrations", migrations, logger)
+
+err = pgutil.WithTx(ctx, pool, func(tx pgx.Tx) error {
+    _, err := tx.Exec(ctx, "INSERT INTO ...")
+    return err
+})
+
+if pgutil.IsNotFound(err) { /* handle missing row */ }
+if pgutil.IsDuplicateKey(err) { /* handle conflict */ }
+```
+
+| Function | Purpose |
+|---|---|
+| `NewPool` | Creates a pgxpool with functional options, pings to verify |
+| `RunMigrations` | Forward-only migration runner with per-service tracking tables |
+| `WithTx` | Executes a function in a transaction (auto rollback/commit) |
+| `IsNotFound` | Checks for `pgx.ErrNoRows` |
+| `IsDuplicateKey` | Checks for PostgreSQL unique constraint violation (23505) |
+
+---
 
 ### `configsource` — Pluggable config loading with integrity validation
 
