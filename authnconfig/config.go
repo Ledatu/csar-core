@@ -15,20 +15,20 @@ import (
 
 // Config is the top-level csar-authn configuration.
 type Config struct {
-	ListenAddr  string                  `yaml:"listen_addr"`
-	BaseURL     string                  `yaml:"base_url"`
-	FrontendURL string                  `yaml:"frontend_url"`
-	TLS         configutil.TLSSection   `yaml:"tls"`
+	ListenAddr  string                   `yaml:"listen_addr"`
+	BaseURL     string                   `yaml:"base_url"`
+	FrontendURL string                   `yaml:"frontend_url"`
+	TLS         configutil.TLSSection    `yaml:"tls"`
 	Health      configutil.HealthSection `yaml:"health"`
-	Log         configutil.LogSection   `yaml:"log"`
-	MetricsAddr string                  `yaml:"metrics_addr"`
-	Database    DatabaseConfig          `yaml:"database"`
-	JWT         JWTConfig               `yaml:"jwt"`
-	OAuth       OAuthConfig             `yaml:"oauth"`
-	Cookie      CookieConfig            `yaml:"cookie"`
-	Redis       *RedisConfig            `yaml:"redis,omitempty"`
-	STS         STSConfig               `yaml:"sts,omitempty"`
-	Authz       AuthzConfig             `yaml:"authz,omitempty"`
+	Log         configutil.LogSection    `yaml:"log"`
+	MetricsAddr string                   `yaml:"metrics_addr"`
+	Database    DatabaseConfig           `yaml:"database"`
+	JWT         JWTConfig                `yaml:"jwt"`
+	OAuth       OAuthConfig              `yaml:"oauth"`
+	Cookie      CookieConfig             `yaml:"cookie"`
+	Redis       *RedisConfig             `yaml:"redis,omitempty"`
+	STS         STSConfig                `yaml:"sts,omitempty"`
+	Authz       AuthzConfig              `yaml:"authz,omitempty"`
 }
 
 // AuthzConfig configures the connection to csar-authz for permissions endpoints.
@@ -48,9 +48,22 @@ type AuthzTLSConfig struct {
 
 // STSConfig controls the Security Token Service for service-to-service auth.
 // Service accounts are managed in the database via the admin API.
+// Bootstrap accounts defined in config take precedence over DB accounts
+// with the same name, ensuring cold-start operability.
 type STSConfig struct {
-	Enabled         bool     `yaml:"enabled"`
-	AssertionMaxAge Duration `yaml:"assertion_max_age"`
+	Enabled         bool               `yaml:"enabled"`
+	AssertionMaxAge Duration           `yaml:"assertion_max_age"`
+	Accounts        []BootstrapAccount `yaml:"accounts"`
+}
+
+// BootstrapAccount defines a service account loaded from configuration
+// rather than the database. Config-defined accounts take precedence by name.
+type BootstrapAccount struct {
+	Name              string   `yaml:"name"`
+	PublicKeyPEM      string   `yaml:"public_key_pem"`
+	AllowedAudiences  []string `yaml:"allowed_audiences"`
+	AllowAllAudiences bool     `yaml:"allow_all_audiences"`
+	TokenTTL          Duration `yaml:"token_ttl"`
 }
 
 // DatabaseConfig selects the storage backend.
@@ -192,4 +205,3 @@ func (c *Config) validate() error {
 
 	return nil
 }
-

@@ -24,6 +24,15 @@ func SafeExpandEnv(s string) string {
 	})
 }
 
+// EnvExpandable is an optional interface for types whose MarshalText
+// intentionally redacts the value (e.g. secret.Secret). Implementing
+// this interface allows ExpandEnvInStruct to access the plaintext for
+// env-var expansion without going through the redacting MarshalText path.
+type EnvExpandable interface {
+	ExpandableValue() string
+	SetExpandedValue(string)
+}
+
 // ExpandEnvInStruct recursively walks a struct value and expands environment
 // variable references (${VAR}, $VAR) in all string fields.
 //
@@ -33,6 +42,7 @@ func SafeExpandEnv(s string) string {
 //
 // Supported types:
 //   - string fields: expanded directly via SafeExpandEnv.
+//   - Types implementing EnvExpandable: expanded via plaintext accessor.
 //   - Types implementing encoding.TextMarshaler + encoding.TextUnmarshaler:
 //     expanded through those interfaces.
 //   - map[K]V: values are recursively expanded (keys are left as-is).
@@ -49,6 +59,13 @@ func ExpandEnvInStruct(v reflect.Value) {
 	case reflect.Struct:
 		if v.CanAddr() {
 			ptr := v.Addr().Interface()
+			if ex, ok := ptr.(EnvExpandable); ok {
+				raw := ex.ExpandableValue()
+				if expanded := SafeExpandEnv(raw); expanded != raw {
+					ex.SetExpandedValue(expanded)
+				}
+				return
+			}
 			tm, isTM := ptr.(encoding.TextMarshaler)
 			tu, isTU := ptr.(encoding.TextUnmarshaler)
 			if isTM && isTU {

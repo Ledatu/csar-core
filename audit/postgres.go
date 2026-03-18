@@ -69,7 +69,7 @@ func (s *PostgresStore) Record(ctx context.Context, event *Event) error {
 	return nil
 }
 
-func (s *PostgresStore) List(ctx context.Context, filter ListFilter) (*ListResult, error) {
+func (s *PostgresStore) List(ctx context.Context, filter *ListFilter) (*ListResult, error) {
 	limit := filter.Limit
 	if limit <= 0 || limit > 100 {
 		limit = 50

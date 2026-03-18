@@ -38,7 +38,7 @@ type AuthConfig struct {
 	SAKeyFile string
 
 	// Static credentials (for S3-compatible APIs).
-	AccessKeyID    secret.Secret
+	AccessKeyID     secret.Secret
 	SecretAccessKey secret.Secret
 }
 

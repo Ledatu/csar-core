@@ -30,8 +30,8 @@ const (
 	HeaderRequestID   = "X-Request-ID"
 	HeaderSubject     = "X-Gateway-Subject"
 	HeaderTenant      = "X-Gateway-Tenant"
-	HeaderRoles       = "X-Gateway-Roles"       // comma-separated
-	HeaderScopes      = "X-Gateway-Scopes"      // comma-separated
+	HeaderRoles       = "X-Gateway-Roles"        // comma-separated
+	HeaderScopes      = "X-Gateway-Scopes"       // comma-separated
 	HeaderAuthzResult = "X-Gateway-Authz-Result" // e.g. "allow", "deny"
 )
 

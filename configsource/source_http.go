@@ -20,9 +20,9 @@ type HTTPSource struct {
 	headers    map[string]string // extra headers (e.g., Authorization)
 	httpClient *http.Client
 
-	mu            sync.Mutex
-	lastETag      string
-	lastModified  bool // true when lastETag was derived from Last-Modified
+	mu           sync.Mutex
+	lastETag     string
+	lastModified bool // true when lastETag was derived from Last-Modified
 }
 
 // defaultHTTPClient is used when the caller does not supply a client.

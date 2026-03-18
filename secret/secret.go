@@ -68,5 +68,18 @@ func (s *Secret) UnmarshalText(text []byte) error {
 	return nil
 }
 
+// ExpandableValue returns the plaintext for env-var expansion.
+// This implements configutil.EnvExpandable so that ExpandEnvInStruct
+// can expand ${VAR} references without going through the redacting
+// MarshalText path.
+func (s Secret) ExpandableValue() string {
+	return s.value
+}
+
+// SetExpandedValue replaces the secret value after env-var expansion.
+func (s *Secret) SetExpandedValue(v string) {
+	s.value = v
+}
+
 // Compile-time interface checks.
 var _ slog.LogValuer = Secret{}

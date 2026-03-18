@@ -34,6 +34,7 @@ type AdminConfig struct {
 	Enabled          bool                  `yaml:"enabled"`
 	Addr             string                `yaml:"addr"`
 	TLS              configutil.TLSSection `yaml:"tls"`
+	AllowedClientCN  string                `yaml:"allowed_client_cn"`
 	DelegatableRoles []string              `yaml:"delegatable_roles"`
 	AuditRequired    bool                  `yaml:"audit_required"`
 }

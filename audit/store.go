@@ -46,5 +46,5 @@ type ListResult struct {
 // Store defines the persistence contract for audit events.
 type Store interface {
 	Record(ctx context.Context, event *Event) error
-	List(ctx context.Context, filter ListFilter) (*ListResult, error)
+	List(ctx context.Context, filter *ListFilter) (*ListResult, error)
 }

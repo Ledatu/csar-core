@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ledatu/csar-core/jwtx"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/ledatu/csar-core/jwtx"
 )
 
 // TestCrossRepoParity simulates the full token lifecycle across csar-authn
