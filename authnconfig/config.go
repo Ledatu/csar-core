@@ -47,19 +47,10 @@ type AuthzTLSConfig struct {
 }
 
 // STSConfig controls the Security Token Service for service-to-service auth.
+// Service accounts are managed in the database via the admin API.
 type STSConfig struct {
-	Enabled         bool                            `yaml:"enabled"`
-	AssertionMaxAge Duration                        `yaml:"assertion_max_age"`
-	ServiceAccounts map[string]ServiceAccountConfig `yaml:"service_accounts"`
-}
-
-// ServiceAccountConfig defines a single service account for STS token exchange.
-type ServiceAccountConfig struct {
-	PublicKeyFile     string   `yaml:"public_key_file"`
-	PublicKey         string   `yaml:"public_key"`
-	AllowedAudiences  []string `yaml:"allowed_audiences"`
-	AllowAllAudiences bool     `yaml:"allow_all_audiences"`
-	TokenTTL          Duration `yaml:"token_ttl"`
+	Enabled         bool     `yaml:"enabled"`
+	AssertionMaxAge Duration `yaml:"assertion_max_age"`
 }
 
 // DatabaseConfig selects the storage backend.
@@ -197,23 +188,6 @@ func (c *Config) validate() error {
 	case "RS256", "EdDSA":
 	default:
 		return fmt.Errorf("jwt.algorithm must be RS256 or EdDSA, got %q", c.JWT.Algorithm)
-	}
-
-	if c.STS.Enabled {
-		if len(c.STS.ServiceAccounts) == 0 {
-			return fmt.Errorf("sts.service_accounts must not be empty when STS is enabled")
-		}
-		for name, sa := range c.STS.ServiceAccounts {
-			if sa.PublicKeyFile == "" && sa.PublicKey == "" {
-				return fmt.Errorf("sts.service_accounts[%s]: public_key_file or public_key is required", name)
-			}
-			if sa.PublicKeyFile != "" && sa.PublicKey != "" {
-				return fmt.Errorf("sts.service_accounts[%s]: specify only one of public_key_file or public_key", name)
-			}
-			if len(sa.AllowedAudiences) == 0 {
-				return fmt.Errorf("sts.service_accounts[%s].allowed_audiences must not be empty", name)
-			}
-		}
 	}
 
 	return nil

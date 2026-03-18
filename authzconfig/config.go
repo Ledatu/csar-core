@@ -26,6 +26,16 @@ type Config struct {
 	Authn      AuthnConfig              `yaml:"authn"`
 	Store      StoreConfig              `yaml:"store"`
 	Policy     PolicyConfig             `yaml:"policy"`
+	Admin      AdminConfig              `yaml:"admin"`
+}
+
+// AdminConfig configures the HTTP admin API surface.
+type AdminConfig struct {
+	Enabled          bool                  `yaml:"enabled"`
+	Addr             string                `yaml:"addr"`
+	TLS              configutil.TLSSection `yaml:"tls"`
+	DelegatableRoles []string              `yaml:"delegatable_roles"`
+	AuditRequired    bool                  `yaml:"audit_required"`
 }
 
 // StoreConfig configures the persistence backend.
@@ -107,6 +117,9 @@ func applyDefaults(cfg *Config) {
 	cfg.Health = cfg.Health.WithDefaults()
 	if cfg.Store.Backend == "" {
 		cfg.Store.Backend = "memory"
+	}
+	if cfg.Admin.Enabled && cfg.Admin.Addr == "" {
+		cfg.Admin.Addr = ":9092"
 	}
 	if cfg.Authn.SubjectClaim == "" {
 		cfg.Authn.SubjectClaim = "sub"
