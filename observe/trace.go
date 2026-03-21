@@ -77,6 +77,11 @@ func InitTracer(ctx context.Context, cfg TraceConfig) (*TracerProvider, error) {
 	return &TracerProvider{tp: tp}, nil
 }
 
+// Provider returns the underlying trace.TracerProvider for use with middleware.
+func (p *TracerProvider) Provider() *sdktrace.TracerProvider {
+	return p.tp
+}
+
 // Shutdown flushes pending spans and shuts down the provider.
 func (p *TracerProvider) Shutdown(ctx context.Context) error {
 	if p == nil || p.tp == nil {
