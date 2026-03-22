@@ -164,18 +164,9 @@ func (c *Config) validate() error {
 		}
 	}
 
-	for i, a := range c.Policy.Assignments {
-		if a.Subject == "" {
-			return fmt.Errorf("policy.assignments[%d].subject is required", i)
-		}
-		if len(a.Roles) == 0 {
-			return fmt.Errorf("policy.assignments[%d].roles must not be empty", i)
-		}
-		for _, role := range a.Roles {
-			if _, ok := roleNames[role]; !ok {
-				return fmt.Errorf("policy.assignments[%d] (%q): role %q not defined", i, a.Subject, role)
-			}
-		}
+	if len(c.Policy.Assignments) > 0 {
+		return fmt.Errorf("policy.assignments is no longer supported; " +
+			"assignments are now runtime-managed via the admin API or --bootstrap-admin")
 	}
 
 	switch c.Store.Backend {
