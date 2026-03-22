@@ -53,14 +53,15 @@ type GRPCConfig struct {
 
 // AuthnConfig configures optional JWT/JWKS validation on inbound gRPC calls.
 type AuthnConfig struct {
-	Enabled       bool     `yaml:"enabled"`
-	JWKSURL       string   `yaml:"jwks_url"`
-	PublicKeyFile string   `yaml:"public_key_file"`
-	Issuer        string   `yaml:"issuer"`
-	Audience      string   `yaml:"audience"`
-	ClockSkew     Duration `yaml:"clock_skew"`
-	SubjectClaim  string   `yaml:"subject_claim"`
-	CacheTTL      Duration `yaml:"cache_ttl"`
+	Enabled       bool                  `yaml:"enabled"`
+	JWKSURL       string                `yaml:"jwks_url"`
+	PublicKeyFile string                `yaml:"public_key_file"`
+	Issuer        string                `yaml:"issuer"`
+	Audience      string                `yaml:"audience"`
+	ClockSkew     Duration              `yaml:"clock_skew"`
+	SubjectClaim  string                `yaml:"subject_claim"`
+	CacheTTL      Duration              `yaml:"cache_ttl"`
+	JWKSTLS       configutil.TLSSection `yaml:"jwks_tls"`
 }
 
 // PolicyConfig defines the declarative RBAC policy.

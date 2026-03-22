@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"time"
 
@@ -24,6 +25,10 @@ type Config struct {
 	ClockSkew     time.Duration
 	SubjectClaim  string
 	CacheTTL      time.Duration
+
+	// HTTPClient, if set, is used for JWKS fetches instead of the default.
+	// Use this when the JWKS endpoint requires mTLS or a custom CA.
+	HTTPClient *http.Client
 }
 
 // Validator validates JWT tokens and extracts the subject claim.
@@ -53,11 +58,14 @@ func NewValidator(cfg *Config, logger *slog.Logger) (*Validator, error) {
 
 	switch {
 	case cfg.JWKSURL != "":
-		remote := jwtx.NewRemoteJWKS(
-			cfg.JWKSURL,
+		jwksOpts := []jwtx.RemoteJWKSOption{
 			jwtx.WithCacheTTL(cfg.CacheTTL),
 			jwtx.WithLogger(logger.With("component", "jwks")),
-		)
+		}
+		if cfg.HTTPClient != nil {
+			jwksOpts = append(jwksOpts, jwtx.WithHTTPClient(cfg.HTTPClient))
+		}
+		remote := jwtx.NewRemoteJWKS(cfg.JWKSURL, jwksOpts...)
 		v.keyFunc = remote.KeyFunc()
 		logger.Info("grpcjwt: JWKS resolver configured", "url", cfg.JWKSURL)
 
