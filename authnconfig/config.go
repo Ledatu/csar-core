@@ -26,6 +26,7 @@ type Config struct {
 	JWT         JWTConfig                `yaml:"jwt"`
 	OAuth       OAuthConfig              `yaml:"oauth"`
 	Cookie      CookieConfig             `yaml:"cookie"`
+	Session     SessionConfig            `yaml:"session"`
 	Redis       *RedisConfig             `yaml:"redis,omitempty"`
 	STS         STSConfig                `yaml:"sts,omitempty"`
 	Authz       AuthzConfig              `yaml:"authz,omitempty"`
@@ -108,6 +109,14 @@ type CookieConfig struct {
 	SameSite string `yaml:"same_site"`
 }
 
+// SessionConfig controls server-side session behaviour.
+type SessionConfig struct {
+	MaxAge          Duration `yaml:"max_age"`           // absolute session lifetime from creation
+	IdleTimeout     Duration `yaml:"idle_timeout"`      // resets on activity (sliding window)
+	TouchThreshold  Duration `yaml:"touch_threshold"`   // only write last_seen_at if older than this
+	CleanupInterval Duration `yaml:"cleanup_interval"`  // how often to purge expired rows
+}
+
 // RedisConfig configures an optional Redis connection.
 type RedisConfig struct {
 	Address  string `yaml:"address"`
@@ -153,6 +162,18 @@ func LoadFromBytes(data []byte) (*Config, error) {
 	}
 	if cfg.Database.Driver == "" {
 		cfg.Database.Driver = "postgres"
+	}
+	if cfg.Session.MaxAge.Duration == 0 {
+		cfg.Session.MaxAge = NewDuration(30 * 24 * time.Hour) // 30d
+	}
+	if cfg.Session.IdleTimeout.Duration == 0 {
+		cfg.Session.IdleTimeout = NewDuration(7 * 24 * time.Hour) // 7d
+	}
+	if cfg.Session.TouchThreshold.Duration == 0 {
+		cfg.Session.TouchThreshold = NewDuration(1 * time.Minute)
+	}
+	if cfg.Session.CleanupInterval.Duration == 0 {
+		cfg.Session.CleanupInterval = NewDuration(1 * time.Hour)
 	}
 	if cfg.STS.Enabled && cfg.STS.AssertionMaxAge.Duration == 0 {
 		cfg.STS.AssertionMaxAge = NewDuration(5 * time.Minute)
