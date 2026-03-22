@@ -18,15 +18,16 @@ type Duration = configutil.Duration
 
 // Config is the top-level csar-authz configuration.
 type Config struct {
-	ListenAddr string                   `yaml:"listen_addr"`
-	HealthAddr string                   `yaml:"health_addr"`
-	TLS        configutil.TLSSection    `yaml:"tls"`
-	Health     configutil.HealthSection `yaml:"health"`
-	GRPC       GRPCConfig               `yaml:"grpc"`
-	Authn      AuthnConfig              `yaml:"authn"`
-	Store      StoreConfig              `yaml:"store"`
-	Policy     PolicyConfig             `yaml:"policy"`
-	Admin      AdminConfig              `yaml:"admin"`
+	ListenAddr           string                   `yaml:"listen_addr"`
+	HealthAddr           string                   `yaml:"health_addr"`
+	TLS                  configutil.TLSSection    `yaml:"tls"`
+	Health               configutil.HealthSection `yaml:"health"`
+	GRPC                 GRPCConfig               `yaml:"grpc"`
+	Authn                AuthnConfig              `yaml:"authn"`
+	Store                StoreConfig              `yaml:"store"`
+	Policy               PolicyConfig             `yaml:"policy"`
+	Admin                AdminConfig              `yaml:"admin"`
+	BootstrapAssignments []BootstrapAssignment    `yaml:"bootstrap_assignments"`
 }
 
 // AdminConfig configures the HTTP admin API surface.
@@ -88,6 +89,16 @@ type AssignmentConfig struct {
 	Roles     []string `yaml:"roles"`
 	ScopeType string   `yaml:"scope_type"`
 	ScopeID   string   `yaml:"scope_id"`
+}
+
+// BootstrapAssignment declares a role assignment that is applied idempotently
+// on every startup. Use this for service identities that must exist for the
+// system to function (e.g. csar-authn calling csar-authz).
+type BootstrapAssignment struct {
+	Subject   string `yaml:"subject"`
+	Role      string `yaml:"role"`
+	ScopeType string `yaml:"scope_type"`
+	ScopeID   string `yaml:"scope_id"`
 }
 
 // LoadFromBytes parses raw YAML bytes into a Config, expanding environment
@@ -167,6 +178,21 @@ func (c *Config) validate() error {
 	if len(c.Policy.Assignments) > 0 {
 		return fmt.Errorf("policy.assignments is no longer supported; " +
 			"assignments are now runtime-managed via the admin API or --bootstrap-admin")
+	}
+
+	for i, ba := range c.BootstrapAssignments {
+		if ba.Subject == "" {
+			return fmt.Errorf("bootstrap_assignments[%d].subject is required", i)
+		}
+		if ba.Role == "" {
+			return fmt.Errorf("bootstrap_assignments[%d].role is required", i)
+		}
+		if _, ok := roleNames[ba.Role]; !ok {
+			return fmt.Errorf("bootstrap_assignments[%d]: role %q is not defined in policy.roles", i, ba.Role)
+		}
+		if ba.ScopeType == "" {
+			return fmt.Errorf("bootstrap_assignments[%d].scope_type is required", i)
+		}
 	}
 
 	switch c.Store.Backend {
