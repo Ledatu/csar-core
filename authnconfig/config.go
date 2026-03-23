@@ -15,21 +15,22 @@ import (
 
 // Config is the top-level csar-authn configuration.
 type Config struct {
-	ListenAddr  string                   `yaml:"listen_addr"`
-	BaseURL     string                   `yaml:"base_url"`
-	FrontendURL string                   `yaml:"frontend_url"`
-	TLS         configutil.TLSSection    `yaml:"tls"`
-	Health      configutil.HealthSection `yaml:"health"`
-	Log         configutil.LogSection    `yaml:"log"`
-	MetricsAddr string                   `yaml:"metrics_addr"`
-	Database    DatabaseConfig           `yaml:"database"`
-	JWT         JWTConfig                `yaml:"jwt"`
-	OAuth       OAuthConfig              `yaml:"oauth"`
-	Cookie      CookieConfig             `yaml:"cookie"`
-	Session     SessionConfig            `yaml:"session"`
-	Redis       *RedisConfig             `yaml:"redis,omitempty"`
-	STS         STSConfig                `yaml:"sts,omitempty"`
-	Authz       AuthzConfig              `yaml:"authz,omitempty"`
+	ListenAddr             string                   `yaml:"listen_addr"`
+	BaseURL                string                   `yaml:"base_url"`
+	FrontendURL            string                   `yaml:"frontend_url"`
+	AllowedRedirectOrigins []string                 `yaml:"allowed_redirect_origins"`
+	TLS                    configutil.TLSSection    `yaml:"tls"`
+	Health                 configutil.HealthSection `yaml:"health"`
+	Log                    configutil.LogSection    `yaml:"log"`
+	MetricsAddr            string                   `yaml:"metrics_addr"`
+	Database               DatabaseConfig           `yaml:"database"`
+	JWT                    JWTConfig                `yaml:"jwt"`
+	OAuth                  OAuthConfig              `yaml:"oauth"`
+	Cookie                 CookieConfig             `yaml:"cookie"`
+	Session                SessionConfig            `yaml:"session"`
+	Redis                  *RedisConfig             `yaml:"redis,omitempty"`
+	STS                    STSConfig                `yaml:"sts,omitempty"`
+	Authz                  AuthzConfig              `yaml:"authz,omitempty"`
 }
 
 // AuthzConfig configures the connection to csar-authz for permissions endpoints.
@@ -111,10 +112,10 @@ type CookieConfig struct {
 
 // SessionConfig controls server-side session behaviour.
 type SessionConfig struct {
-	MaxAge          Duration `yaml:"max_age"`           // absolute session lifetime from creation
-	IdleTimeout     Duration `yaml:"idle_timeout"`      // resets on activity (sliding window)
-	TouchThreshold  Duration `yaml:"touch_threshold"`   // only write last_seen_at if older than this
-	CleanupInterval Duration `yaml:"cleanup_interval"`  // how often to purge expired rows
+	MaxAge          Duration `yaml:"max_age"`          // absolute session lifetime from creation
+	IdleTimeout     Duration `yaml:"idle_timeout"`     // resets on activity (sliding window)
+	TouchThreshold  Duration `yaml:"touch_threshold"`  // only write last_seen_at if older than this
+	CleanupInterval Duration `yaml:"cleanup_interval"` // how often to purge expired rows
 }
 
 // RedisConfig configures an optional Redis connection.
