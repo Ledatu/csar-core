@@ -31,6 +31,7 @@ type Config struct {
 	Redis                  *RedisConfig             `yaml:"redis,omitempty"`
 	STS                    STSConfig                `yaml:"sts,omitempty"`
 	Authz                  AuthzConfig              `yaml:"authz,omitempty"`
+	BotVerify              *BotVerifyConfig          `yaml:"bot_verify,omitempty"`
 }
 
 // AuthzConfig configures the connection to csar-authz for permissions endpoints.
@@ -46,6 +47,21 @@ type AuthzTLSConfig struct {
 	CAFile   string `yaml:"ca_file,omitempty"`
 	CertFile string `yaml:"cert_file,omitempty"`
 	KeyFile  string `yaml:"key_file,omitempty"`
+}
+
+// BotVerifyConfig controls bot-based identity verification (Telegram, VK, etc.)
+type BotVerifyConfig struct {
+	Enabled          bool              `yaml:"enabled"`
+	CodeTTL          Duration          `yaml:"code_ttl"`
+	MaxPendingPerIP  int               `yaml:"max_pending_per_ip"`
+	AllowedProviders []string          `yaml:"allowed_providers"`
+	Bots             []BotProviderInfo `yaml:"bots"`
+}
+
+// BotProviderInfo describes a bot that users can send verification codes to.
+type BotProviderInfo struct {
+	Provider    string `yaml:"provider"`
+	BotUsername string `yaml:"bot_username"`
 }
 
 // STSConfig controls the Security Token Service for service-to-service auth.
@@ -178,6 +194,14 @@ func LoadFromBytes(data []byte) (*Config, error) {
 	}
 	if cfg.STS.Enabled && cfg.STS.AssertionMaxAge.Duration == 0 {
 		cfg.STS.AssertionMaxAge = NewDuration(5 * time.Minute)
+	}
+	if cfg.BotVerify != nil && cfg.BotVerify.Enabled {
+		if cfg.BotVerify.CodeTTL.Duration == 0 {
+			cfg.BotVerify.CodeTTL = NewDuration(5 * time.Minute)
+		}
+		if cfg.BotVerify.MaxPendingPerIP == 0 {
+			cfg.BotVerify.MaxPendingPerIP = 3
+		}
 	}
 
 	cfg.Health = cfg.Health.WithDefaults()
