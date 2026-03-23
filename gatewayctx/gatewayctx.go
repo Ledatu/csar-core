@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // Trusted header names. The csar gateway strips client-supplied values
@@ -43,6 +45,14 @@ type Identity struct {
 	Roles       []string
 	Scopes      []string
 	AuthzResult string
+}
+
+// SubjectUUID parses the Subject as a UUID. Returns an error if empty or invalid.
+func (id *Identity) SubjectUUID() (uuid.UUID, error) {
+	if id.Subject == "" {
+		return uuid.Nil, fmt.Errorf("gatewayctx: empty subject")
+	}
+	return uuid.Parse(id.Subject)
 }
 
 type ctxKey struct{}
