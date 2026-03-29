@@ -40,6 +40,53 @@ func TestSafeExpandEnv_UnsetVar(t *testing.T) {
 	}
 }
 
+func TestSafeExpandEnv_DefaultColonDash(t *testing.T) {
+	os.Unsetenv("UNSET_VAR")
+	got := SafeExpandEnv("${UNSET_VAR:-fallback_value}")
+	if got != "fallback_value" {
+		t.Errorf("got %q, want %q", got, "fallback_value")
+	}
+}
+
+func TestSafeExpandEnv_DefaultColonDashWithURL(t *testing.T) {
+	os.Unsetenv("STS_ENDPOINT")
+	got := SafeExpandEnv("${STS_ENDPOINT:-https://authn:8081/sts/token}")
+	want := "https://authn:8081/sts/token"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestSafeExpandEnv_DefaultColonDashOverridden(t *testing.T) {
+	t.Setenv("MY_VAR", "real_value")
+	got := SafeExpandEnv("${MY_VAR:-fallback}")
+	if got != "real_value" {
+		t.Errorf("got %q, want %q", got, "real_value")
+	}
+}
+
+func TestSafeExpandEnv_DefaultColonDashEmptyEnv(t *testing.T) {
+	t.Setenv("EMPTY_VAR", "")
+	got := SafeExpandEnv("${EMPTY_VAR:-fallback}")
+	if got != "fallback" {
+		t.Errorf("got %q, want %q (empty env should use fallback with :-)", got, "fallback")
+	}
+}
+
+func TestSafeExpandEnv_DefaultDashOnly(t *testing.T) {
+	t.Setenv("SET_EMPTY", "")
+	got := SafeExpandEnv("${SET_EMPTY-fallback}")
+	if got != "" {
+		t.Errorf("got %q, want empty (var is set, - only checks existence)", got)
+	}
+
+	os.Unsetenv("TRULY_UNSET")
+	got = SafeExpandEnv("${TRULY_UNSET-fallback}")
+	if got != "fallback" {
+		t.Errorf("got %q, want %q", got, "fallback")
+	}
+}
+
 func TestExpandEnvInStruct(t *testing.T) {
 	t.Setenv("HOST", "example.com")
 	t.Setenv("PORT", "8080")

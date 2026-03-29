@@ -4,11 +4,15 @@ import (
 	"encoding"
 	"os"
 	"reflect"
+	"strings"
 )
 
 // SafeExpandEnv expands ${VAR} and $VAR references to environment variables,
 // but preserves bare numeric references ($1, $2, ${1}, etc.) which are regex
 // back-references in path_rewrite rules.
+//
+// Supports bash-style defaults: ${VAR:-default} returns "default" when VAR
+// is unset or empty, and ${VAR-default} returns "default" only when unset.
 //
 // POSIX environment variable names never start with a digit, so any variable
 // reference whose name begins with 0-9 is a back-reference, not an env var.
@@ -20,6 +24,24 @@ func SafeExpandEnv(s string) string {
 		if key[0] >= '0' && key[0] <= '9' {
 			return "$" + key
 		}
+
+		if idx := strings.Index(key, ":-"); idx >= 0 {
+			name := key[:idx]
+			fallback := key[idx+2:]
+			if val := os.Getenv(name); val != "" {
+				return val
+			}
+			return fallback
+		}
+		if idx := strings.Index(key, "-"); idx >= 0 {
+			name := key[:idx]
+			fallback := key[idx+1:]
+			if _, ok := os.LookupEnv(name); ok {
+				return os.Getenv(name)
+			}
+			return fallback
+		}
+
 		return os.Getenv(key)
 	})
 }
