@@ -2,6 +2,7 @@ package health
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -201,5 +202,55 @@ func TestReadinessChecker_CustomTimeout(t *testing.T) {
 	rc := NewReadinessChecker("1.0.0", true, WithCheckTimeout(50*time.Millisecond))
 	if rc.checkTimeout != 50*time.Millisecond {
 		t.Errorf("checkTimeout = %v, want 50ms", rc.checkTimeout)
+	}
+}
+
+func TestTCPDialCheck_OK(t *testing.T) {
+	t.Parallel()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+
+	check := TCPDialCheck(ln.Addr().String(), 250*time.Millisecond)
+	got := check()
+	if got.Status != "ok" {
+		t.Fatalf("status = %q, want ok (%s)", got.Status, got.Detail)
+	}
+}
+
+func TestTCPDialCheck_WildcardAddrUsesLoopback(t *testing.T) {
+	t.Parallel()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+
+	_, port, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	check := TCPDialCheck(":"+port, 250*time.Millisecond)
+	got := check()
+	if got.Status != "ok" {
+		t.Fatalf("status = %q, want ok (%s)", got.Status, got.Detail)
+	}
+}
+
+func TestTCPDialCheck_Fail(t *testing.T) {
+	t.Parallel()
+
+	check := TCPDialCheck("127.0.0.1:1", 50*time.Millisecond)
+	got := check()
+	if got.Status != "fail" {
+		t.Fatalf("status = %q, want fail", got.Status)
+	}
+	if got.Detail == "" {
+		t.Fatal("expected failure detail")
 	}
 }
