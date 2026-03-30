@@ -163,6 +163,58 @@ func TestNewClientTLSConfig_ServerName(t *testing.T) {
 	}
 }
 
+func TestNewHTTPTransport_Defaults(t *testing.T) {
+	tr, err := NewHTTPTransport(ClientConfig{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tr == nil {
+		t.Fatal("expected non-nil transport")
+	}
+	if tr.TLSClientConfig == nil {
+		t.Fatal("expected non-nil TLSClientConfig")
+	}
+	if tr.TLSClientConfig.MinVersion != tls.VersionTLS12 {
+		t.Errorf("MinVersion = %d, want %d", tr.TLSClientConfig.MinVersion, tls.VersionTLS12)
+	}
+}
+
+func TestNewHTTPTransport_WithCAAndClientCert(t *testing.T) {
+	caFile := writeTempCA(t)
+	certFile, keyFile := writeTempKeyPair(t)
+	tr, err := NewHTTPTransport(ClientConfig{
+		CAFile:   caFile,
+		CertFile: certFile,
+		KeyFile:  keyFile,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tr.TLSClientConfig.RootCAs == nil {
+		t.Error("expected non-nil RootCAs")
+	}
+	if len(tr.TLSClientConfig.Certificates) != 1 {
+		t.Errorf("Certificates length = %d, want 1", len(tr.TLSClientConfig.Certificates))
+	}
+}
+
+func TestNewHTTPTransport_ServerName(t *testing.T) {
+	tr, err := NewHTTPTransport(ClientConfig{ServerName: "api.example.com"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tr.TLSClientConfig.ServerName != "api.example.com" {
+		t.Errorf("ServerName = %q, want %q", tr.TLSClientConfig.ServerName, "api.example.com")
+	}
+}
+
+func TestNewHTTPTransport_BadCA(t *testing.T) {
+	_, err := NewHTTPTransport(ClientConfig{CAFile: "/nonexistent/ca.pem"})
+	if err == nil {
+		t.Fatal("expected error for missing CA file")
+	}
+}
+
 func TestLoadCertPool(t *testing.T) {
 	caFile := writeTempCA(t)
 	pool, err := LoadCertPool(caFile)

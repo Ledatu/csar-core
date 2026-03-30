@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"net/http"
 	"os"
 )
 
@@ -91,6 +92,18 @@ func NewClientTLSConfig(cfg ClientConfig) (*tls.Config, error) {
 	}
 
 	return tc, nil
+}
+
+// NewHTTPTransport builds an *http.Transport with TLS configured per cfg.
+// It clones http.DefaultTransport to preserve sensible connection-pool defaults.
+func NewHTTPTransport(cfg ClientConfig) (*http.Transport, error) {
+	tlsCfg, err := NewClientTLSConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.TLSClientConfig = tlsCfg
+	return tr, nil
 }
 
 // LoadCertPool reads a PEM file and returns a certificate pool.
