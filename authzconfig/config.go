@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ledatu/csar-core/configutil"
+	"github.com/ledatu/csar-core/stsclient"
 	"gopkg.in/yaml.v3"
 )
 
@@ -18,16 +19,17 @@ type Duration = configutil.Duration
 
 // Config is the top-level csar-authz configuration.
 type Config struct {
-	ListenAddr           string                   `yaml:"listen_addr"`
-	HealthAddr           string                   `yaml:"health_addr"`
-	TLS                  configutil.TLSSection    `yaml:"tls"`
-	Health               configutil.HealthSection `yaml:"health"`
-	GRPC                 GRPCConfig               `yaml:"grpc"`
-	Authn                AuthnConfig              `yaml:"authn"`
-	Store                StoreConfig              `yaml:"store"`
-	Policy               PolicyConfig             `yaml:"policy"`
-	Admin                AdminConfig              `yaml:"admin"`
-	BootstrapAssignments []BootstrapAssignment    `yaml:"bootstrap_assignments"`
+	ListenAddr           string                      `yaml:"listen_addr"`
+	HealthAddr           string                      `yaml:"health_addr"`
+	TLS                  configutil.TLSSection       `yaml:"tls"`
+	Health               configutil.HealthSection    `yaml:"health"`
+	GRPC                 GRPCConfig                  `yaml:"grpc"`
+	Authn                AuthnConfig                 `yaml:"authn"`
+	Store                StoreConfig                 `yaml:"store"`
+	Policy               PolicyConfig                `yaml:"policy"`
+	Admin                AdminConfig                 `yaml:"admin"`
+	Audit                stsclient.ServiceAuthConfig `yaml:"audit,omitempty"`
+	BootstrapAssignments []BootstrapAssignment       `yaml:"bootstrap_assignments"`
 }
 
 // AdminConfig configures the HTTP admin API surface.
@@ -214,6 +216,9 @@ func (c *Config) validate() error {
 		if hasJWKS && hasKey {
 			return fmt.Errorf("authn: specify only one of jwks_url or public_key_file")
 		}
+	}
+	if err := c.Audit.Validate(); err != nil {
+		return err
 	}
 
 	return nil

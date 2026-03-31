@@ -10,28 +10,30 @@ import (
 	"time"
 
 	"github.com/ledatu/csar-core/configutil"
+	"github.com/ledatu/csar-core/stsclient"
 	"gopkg.in/yaml.v3"
 )
 
 // Config is the top-level csar-authn configuration.
 type Config struct {
-	ListenAddr             string                   `yaml:"listen_addr"`
-	BaseURL                string                   `yaml:"base_url"`
-	FrontendURL            string                   `yaml:"frontend_url"`
-	AllowedRedirectOrigins []string                 `yaml:"allowed_redirect_origins"`
-	TLS                    configutil.TLSSection    `yaml:"tls"`
-	Health                 configutil.HealthSection `yaml:"health"`
-	Log                    configutil.LogSection    `yaml:"log"`
-	MetricsAddr            string                   `yaml:"metrics_addr"`
-	Database               DatabaseConfig           `yaml:"database"`
-	JWT                    JWTConfig                `yaml:"jwt"`
-	OAuth                  OAuthConfig              `yaml:"oauth"`
-	Cookie                 CookieConfig             `yaml:"cookie"`
-	Session                SessionConfig            `yaml:"session"`
-	Redis                  *RedisConfig             `yaml:"redis,omitempty"`
-	STS                    STSConfig                `yaml:"sts,omitempty"`
-	Authz                  AuthzConfig              `yaml:"authz,omitempty"`
-	BotVerify              *BotVerifyConfig          `yaml:"bot_verify,omitempty"`
+	ListenAddr             string                      `yaml:"listen_addr"`
+	BaseURL                string                      `yaml:"base_url"`
+	FrontendURL            string                      `yaml:"frontend_url"`
+	AllowedRedirectOrigins []string                    `yaml:"allowed_redirect_origins"`
+	TLS                    configutil.TLSSection       `yaml:"tls"`
+	Health                 configutil.HealthSection    `yaml:"health"`
+	Log                    configutil.LogSection       `yaml:"log"`
+	MetricsAddr            string                      `yaml:"metrics_addr"`
+	Database               DatabaseConfig              `yaml:"database"`
+	JWT                    JWTConfig                   `yaml:"jwt"`
+	OAuth                  OAuthConfig                 `yaml:"oauth"`
+	Cookie                 CookieConfig                `yaml:"cookie"`
+	Session                SessionConfig               `yaml:"session"`
+	Redis                  *RedisConfig                `yaml:"redis,omitempty"`
+	STS                    STSConfig                   `yaml:"sts,omitempty"`
+	Authz                  AuthzConfig                 `yaml:"authz,omitempty"`
+	Audit                  stsclient.ServiceAuthConfig `yaml:"audit,omitempty"`
+	BotVerify              *BotVerifyConfig            `yaml:"bot_verify,omitempty"`
 }
 
 // AuthzConfig configures the connection to csar-authz for permissions endpoints.
@@ -228,6 +230,9 @@ func (c *Config) validate() error {
 	}
 	if c.OAuth.SessionSecret == "" {
 		return fmt.Errorf("oauth.session_secret is required")
+	}
+	if err := c.Audit.Validate(); err != nil {
+		return err
 	}
 	if len(c.OAuth.Providers) == 0 {
 		return fmt.Errorf("at least one oauth provider is required")
