@@ -106,6 +106,11 @@ func (s *PostgresStore) List(ctx context.Context, filter *ListFilter) (*ListResu
 		args = append(args, filter.TargetType)
 		idx++
 	}
+	if filter.TargetID != "" {
+		query += fmt.Sprintf(" AND target_id = $%d", idx)
+		args = append(args, filter.TargetID)
+		idx++
+	}
 	if filter.Since != nil {
 		query += fmt.Sprintf(" AND created_at >= $%d", idx)
 		args = append(args, *filter.Since)
@@ -151,7 +156,7 @@ func (s *PostgresStore) List(ctx context.Context, filter *ListFilter) (*ListResu
 	if len(events) > limit {
 		events = events[:limit]
 		last := events[len(events)-1]
-		result.NextCursor = encodeCursor(last.CreatedAt, last.ID)
+		result.NextCursor = EncodeListCursor(last.CreatedAt, last.ID)
 	}
 	result.Events = events
 	return result, nil
@@ -168,6 +173,16 @@ func encodeCursor(t time.Time, id string) string {
 	return base64.RawURLEncoding.EncodeToString(
 		[]byte(t.Format(time.RFC3339Nano) + "|" + id),
 	)
+}
+
+// EncodeListCursor builds an opaque pagination cursor from the last row of a list page.
+func EncodeListCursor(t time.Time, id string) string {
+	return encodeCursor(t, id)
+}
+
+// DecodeListCursor parses a cursor produced by EncodeListCursor.
+func DecodeListCursor(cursor string) (time.Time, string, error) {
+	return decodeCursor(cursor)
 }
 
 func decodeCursor(cursor string) (time.Time, string, error) {
