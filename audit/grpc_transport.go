@@ -30,7 +30,7 @@ func (t *GRPCTransport) Send(ctx context.Context, events []*Event) error {
 		return nil
 	}
 	req := &auditv1.RecordEventsRequest{
-		Events: eventsToProto(events),
+		Events: EventsToProto(events),
 	}
 	_, err := t.client.RecordEvents(ctx, req)
 	return err
@@ -41,18 +41,57 @@ func (*GRPCTransport) Close() error {
 	return nil
 }
 
-func eventsToProto(events []*Event) []*auditv1.AuditEvent {
+// GRPCSingleTransport sends each event individually via RecordEvent.
+type GRPCSingleTransport struct {
+	client auditv1.AuditIngestServiceClient
+}
+
+func NewGRPCSingleTransport(conn grpc.ClientConnInterface) *GRPCSingleTransport {
+	if conn == nil {
+		return &GRPCSingleTransport{}
+	}
+	return &GRPCSingleTransport{
+		client: auditv1.NewAuditIngestServiceClient(conn),
+	}
+}
+
+func (t *GRPCSingleTransport) Send(ctx context.Context, events []*Event) error {
+	if t == nil || t.client == nil || len(events) == 0 {
+		return nil
+	}
+	var firstErr error
+	for _, e := range events {
+		if e == nil {
+			continue
+		}
+		_, err := t.client.RecordEvent(ctx, &auditv1.RecordEventRequest{
+			Event: EventToProto(e),
+		})
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func (*GRPCSingleTransport) Close() error {
+	return nil
+}
+
+// EventsToProto converts a slice of audit events to their protobuf representation.
+func EventsToProto(events []*Event) []*auditv1.AuditEvent {
 	out := make([]*auditv1.AuditEvent, 0, len(events))
 	for _, e := range events {
 		if e == nil {
 			continue
 		}
-		out = append(out, eventToProto(e))
+		out = append(out, EventToProto(e))
 	}
 	return out
 }
 
-func eventToProto(e *Event) *auditv1.AuditEvent {
+// EventToProto converts a single audit event to its protobuf representation.
+func EventToProto(e *Event) *auditv1.AuditEvent {
 	msg := &auditv1.AuditEvent{
 		Service:     e.Service,
 		Actor:       e.Actor,
