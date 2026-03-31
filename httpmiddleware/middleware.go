@@ -4,9 +4,12 @@
 package httpmiddleware
 
 import (
+	"bufio"
 	"crypto/rand"
 	"encoding/hex"
+	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"runtime/debug"
 	"time"
@@ -155,6 +158,32 @@ func (r *responseRecorder) Flush() {
 	if f, ok := r.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+// Hijack delegates to the underlying writer's Hijack when supported.
+// Gorilla websocket upgrades require the concrete ResponseWriter to
+// implement http.Hijacker directly rather than relying on Unwrap.
+func (r *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	return h.Hijack()
+}
+
+// ReadFrom preserves optimized io.Copy paths through the recorder.
+func (r *responseRecorder) ReadFrom(src io.Reader) (int64, error) {
+	rf, ok := r.ResponseWriter.(io.ReaderFrom)
+	if !ok {
+		if !r.written {
+			r.written = true
+		}
+		return io.Copy(r.ResponseWriter, src)
+	}
+	if !r.written {
+		r.written = true
+	}
+	return rf.ReadFrom(src)
 }
 
 func generateID() string {

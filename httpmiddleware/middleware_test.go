@@ -1,9 +1,11 @@
 package httpmiddleware
 
 import (
+	"bufio"
 	"bytes"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -229,6 +231,16 @@ type flushRecorder struct {
 
 func (f *flushRecorder) Flush() { f.flushed = true }
 
+type hijackRecorder struct {
+	*httptest.ResponseRecorder
+	hijacked bool
+}
+
+func (h *hijackRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h.hijacked = true
+	return nil, bufio.NewReadWriter(bufio.NewReader(strings.NewReader("")), bufio.NewWriter(io.Discard)), nil
+}
+
 func TestAccessLog_PreservesFlusher(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	fr := &flushRecorder{ResponseRecorder: httptest.NewRecorder()}
@@ -242,6 +254,26 @@ func TestAccessLog_PreservesFlusher(t *testing.T) {
 	AccessLog(logger)(inner).ServeHTTP(fr, httptest.NewRequest("GET", "/", nil))
 	if !fr.flushed {
 		t.Error("Flusher interface was not preserved through the recorder")
+	}
+}
+
+func TestAccessLog_PreservesHijacker(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	hr := &hijackRecorder{ResponseRecorder: httptest.NewRecorder()}
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hijacker, ok := w.(http.Hijacker)
+		if !ok {
+			t.Fatal("Hijacker interface was not preserved through the recorder")
+		}
+		if _, _, err := hijacker.Hijack(); err != nil {
+			t.Fatalf("Hijack returned error: %v", err)
+		}
+	})
+
+	AccessLog(logger)(inner).ServeHTTP(hr, httptest.NewRequest("GET", "/", nil))
+	if !hr.hijacked {
+		t.Error("Hijack was not delegated to the underlying writer")
 	}
 }
 
