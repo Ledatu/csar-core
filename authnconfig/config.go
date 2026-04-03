@@ -16,24 +16,24 @@ import (
 
 // Config is the top-level csar-authn configuration.
 type Config struct {
-	ListenAddr             string                      `yaml:"listen_addr"`
-	BaseURL                string                      `yaml:"base_url"`
-	FrontendURL            string                      `yaml:"frontend_url"`
-	AllowedRedirectOrigins []string                    `yaml:"allowed_redirect_origins"`
-	TLS                    configutil.TLSSection       `yaml:"tls"`
-	Health                 configutil.HealthSection    `yaml:"health"`
-	Log                    configutil.LogSection       `yaml:"log"`
-	MetricsAddr            string                      `yaml:"metrics_addr"`
-	Database               DatabaseConfig              `yaml:"database"`
-	JWT                    JWTConfig                   `yaml:"jwt"`
-	OAuth                  OAuthConfig                 `yaml:"oauth"`
-	Cookie                 CookieConfig                `yaml:"cookie"`
-	Session                SessionConfig               `yaml:"session"`
-	Redis                  *RedisConfig                `yaml:"redis,omitempty"`
-	STS                    STSConfig                   `yaml:"sts,omitempty"`
-	Authz                  AuthzConfig                 `yaml:"authz,omitempty"`
-	Audit                  stsclient.ServiceAuthConfig `yaml:"audit,omitempty"`
-	BotVerify              *BotVerifyConfig            `yaml:"bot_verify,omitempty"`
+	ListenAddr             string                         `yaml:"listen_addr"`
+	BaseURL                string                         `yaml:"base_url"`
+	FrontendURL            string                         `yaml:"frontend_url"`
+	AllowedRedirectOrigins []string                       `yaml:"allowed_redirect_origins"`
+	TLS                    configutil.TLSSection          `yaml:"tls"`
+	Health                 configutil.HealthSection       `yaml:"health"`
+	ProbeSidecar           configutil.ProbeSidecarSection `yaml:",inline"`
+	Log                    configutil.LogSection          `yaml:"log"`
+	Database               DatabaseConfig                 `yaml:"database"`
+	JWT                    JWTConfig                      `yaml:"jwt"`
+	OAuth                  OAuthConfig                    `yaml:"oauth"`
+	Cookie                 CookieConfig                   `yaml:"cookie"`
+	Session                SessionConfig                  `yaml:"session"`
+	Redis                  *RedisConfig                   `yaml:"redis,omitempty"`
+	STS                    STSConfig                      `yaml:"sts,omitempty"`
+	Authz                  AuthzConfig                    `yaml:"authz,omitempty"`
+	Audit                  stsclient.ServiceAuthConfig    `yaml:"audit,omitempty"`
+	BotVerify              *BotVerifyConfig               `yaml:"bot_verify,omitempty"`
 }
 
 // AuthzConfig configures the connection to csar-authz for permissions endpoints.

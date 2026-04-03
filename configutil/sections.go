@@ -111,3 +111,17 @@ func (s HealthSection) WithDefaults() HealthSection {
 	}
 	return s
 }
+
+// ProbeSidecarSection configures the plain HTTP health/readiness/metrics sidecar.
+// It intentionally uses health_addr even when metrics are also exposed there.
+type ProbeSidecarSection struct {
+	Addr string `yaml:"health_addr"`
+}
+
+// WithDefault returns a copy with the given default listen address applied.
+func (s ProbeSidecarSection) WithDefault(addr string) ProbeSidecarSection {
+	if s.Addr == "" {
+		s.Addr = addr
+	}
+	return s
+}

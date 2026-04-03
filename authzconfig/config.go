@@ -19,17 +19,17 @@ type Duration = configutil.Duration
 
 // Config is the top-level csar-authz configuration.
 type Config struct {
-	ListenAddr           string                      `yaml:"listen_addr"`
-	HealthAddr           string                      `yaml:"health_addr"`
-	TLS                  configutil.TLSSection       `yaml:"tls"`
-	Health               configutil.HealthSection    `yaml:"health"`
-	GRPC                 GRPCConfig                  `yaml:"grpc"`
-	Authn                AuthnConfig                 `yaml:"authn"`
-	Store                StoreConfig                 `yaml:"store"`
-	Policy               PolicyConfig                `yaml:"policy"`
-	Admin                AdminConfig                 `yaml:"admin"`
-	Audit                stsclient.ServiceAuthConfig `yaml:"audit,omitempty"`
-	BootstrapAssignments []BootstrapAssignment       `yaml:"bootstrap_assignments"`
+	ListenAddr           string                         `yaml:"listen_addr"`
+	TLS                  configutil.TLSSection          `yaml:"tls"`
+	Health               configutil.HealthSection       `yaml:"health"`
+	ProbeSidecar         configutil.ProbeSidecarSection `yaml:",inline"`
+	GRPC                 GRPCConfig                     `yaml:"grpc"`
+	Authn                AuthnConfig                    `yaml:"authn"`
+	Store                StoreConfig                    `yaml:"store"`
+	Policy               PolicyConfig                   `yaml:"policy"`
+	Admin                AdminConfig                    `yaml:"admin"`
+	Audit                stsclient.ServiceAuthConfig    `yaml:"audit,omitempty"`
+	BootstrapAssignments []BootstrapAssignment          `yaml:"bootstrap_assignments"`
 }
 
 // AdminConfig configures the HTTP admin API surface.
@@ -126,9 +126,7 @@ func applyDefaults(cfg *Config) {
 	if cfg.ListenAddr == "" {
 		cfg.ListenAddr = ":9090"
 	}
-	if cfg.HealthAddr == "" {
-		cfg.HealthAddr = ":9091"
-	}
+	cfg.ProbeSidecar = cfg.ProbeSidecar.WithDefault(":9091")
 	cfg.Health = cfg.Health.WithDefaults()
 	if cfg.Store.Backend == "" {
 		cfg.Store.Backend = "memory"

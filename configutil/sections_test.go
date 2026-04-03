@@ -113,6 +113,22 @@ func TestHealthSection_WithDefaults_PreservesCustom(t *testing.T) {
 	}
 }
 
+func TestProbeSidecarSection_WithDefault(t *testing.T) {
+	s := ProbeSidecarSection{}
+	s = s.WithDefault("127.0.0.1:9181")
+	if s.Addr != "127.0.0.1:9181" {
+		t.Errorf("Addr = %q, want %q", s.Addr, "127.0.0.1:9181")
+	}
+}
+
+func TestProbeSidecarSection_WithDefault_PreservesConfigured(t *testing.T) {
+	s := ProbeSidecarSection{Addr: "127.0.0.1:9999"}
+	s = s.WithDefault("127.0.0.1:9181")
+	if s.Addr != "127.0.0.1:9999" {
+		t.Errorf("Addr = %q, want %q", s.Addr, "127.0.0.1:9999")
+	}
+}
+
 func checkErr(t *testing.T, err error, wantSubstr string) {
 	t.Helper()
 	if wantSubstr == "" {
