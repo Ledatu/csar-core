@@ -27,6 +27,7 @@ type Config struct {
 	Database               DatabaseConfig                 `yaml:"database"`
 	JWT                    JWTConfig                      `yaml:"jwt"`
 	OAuth                  OAuthConfig                    `yaml:"oauth"`
+	Passkeys               PasskeyConfig                  `yaml:"passkeys,omitempty"`
 	Cookie                 CookieConfig                   `yaml:"cookie"`
 	Session                SessionConfig                  `yaml:"session"`
 	Redis                  *RedisConfig                   `yaml:"redis,omitempty"`
@@ -120,6 +121,19 @@ type ProviderConfig struct {
 	Trusted      bool     `yaml:"trusted"`
 }
 
+// PasskeyConfig controls WebAuthn/passkey ceremonies.
+type PasskeyConfig struct {
+	Enabled          bool     `yaml:"enabled"`
+	RPID             string   `yaml:"rp_id"`
+	RPDisplayName    string   `yaml:"rp_display_name"`
+	Origins          []string `yaml:"origins"`
+	ChallengeTTL     Duration `yaml:"challenge_ttl"`
+	StateCookieName  string   `yaml:"state_cookie_name"`
+	UserVerification string   `yaml:"user_verification"`
+	Attestation      string   `yaml:"attestation"`
+	StateSecret      string   `yaml:"state_secret"`
+}
+
 // CookieConfig controls the session cookie parameters.
 type CookieConfig struct {
 	Name     string `yaml:"name"`
@@ -205,6 +219,21 @@ func LoadFromBytes(data []byte) (*Config, error) {
 			cfg.BotVerify.MaxPendingPerIP = 3
 		}
 	}
+	if cfg.Passkeys.ChallengeTTL.Duration == 0 {
+		cfg.Passkeys.ChallengeTTL = NewDuration(5 * time.Minute)
+	}
+	if cfg.Passkeys.StateCookieName == "" {
+		cfg.Passkeys.StateCookieName = "csar_passkey_state"
+	}
+	if cfg.Passkeys.UserVerification == "" {
+		cfg.Passkeys.UserVerification = "required"
+	}
+	if cfg.Passkeys.Attestation == "" {
+		cfg.Passkeys.Attestation = "none"
+	}
+	if cfg.Passkeys.StateSecret == "" {
+		cfg.Passkeys.StateSecret = cfg.OAuth.SessionSecret
+	}
 
 	cfg.Health = cfg.Health.WithDefaults()
 
@@ -252,6 +281,30 @@ func (c *Config) validate() error {
 	case "RS256", "EdDSA":
 	default:
 		return fmt.Errorf("jwt.algorithm must be RS256 or EdDSA, got %q", c.JWT.Algorithm)
+	}
+	if c.Passkeys.Enabled {
+		if c.Passkeys.RPID == "" {
+			return fmt.Errorf("passkeys.rp_id is required when passkeys are enabled")
+		}
+		if c.Passkeys.RPDisplayName == "" {
+			return fmt.Errorf("passkeys.rp_display_name is required when passkeys are enabled")
+		}
+		if len(c.Passkeys.Origins) == 0 {
+			return fmt.Errorf("passkeys.origins must contain at least one origin when passkeys are enabled")
+		}
+		switch c.Passkeys.UserVerification {
+		case "required", "preferred", "discouraged":
+		default:
+			return fmt.Errorf("passkeys.user_verification must be required, preferred, or discouraged")
+		}
+		switch c.Passkeys.Attestation {
+		case "none", "indirect", "direct", "enterprise":
+		default:
+			return fmt.Errorf("passkeys.attestation must be none, indirect, direct, or enterprise")
+		}
+		if c.Passkeys.StateSecret == "" {
+			return fmt.Errorf("passkeys.state_secret resolved empty")
+		}
 	}
 
 	return nil
