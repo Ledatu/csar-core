@@ -30,6 +30,7 @@ type Config struct {
 	Passkeys               PasskeyConfig                  `yaml:"passkeys,omitempty"`
 	Cookie                 CookieConfig                   `yaml:"cookie"`
 	Session                SessionConfig                  `yaml:"session"`
+	QRLogin                QRLoginConfig                  `yaml:"qr_login"`
 	Redis                  *RedisConfig                   `yaml:"redis,omitempty"`
 	STS                    STSConfig                      `yaml:"sts,omitempty"`
 	Authz                  AuthzConfig                    `yaml:"authz,omitempty"`
@@ -150,6 +151,13 @@ type SessionConfig struct {
 	CleanupInterval Duration `yaml:"cleanup_interval"` // how often to purge expired rows
 }
 
+// QRLoginConfig controls QR device handoff login behaviour.
+type QRLoginConfig struct {
+	TTL             Duration `yaml:"ttl"`
+	MaxPendingPerIP int      `yaml:"max_pending_per_ip"`
+	CleanupInterval Duration `yaml:"cleanup_interval"`
+}
+
 // RedisConfig configures an optional Redis connection.
 type RedisConfig struct {
 	Address  string `yaml:"address"`
@@ -207,6 +215,15 @@ func LoadFromBytes(data []byte) (*Config, error) {
 	}
 	if cfg.Session.CleanupInterval.Duration == 0 {
 		cfg.Session.CleanupInterval = NewDuration(1 * time.Hour)
+	}
+	if cfg.QRLogin.TTL.Duration == 0 {
+		cfg.QRLogin.TTL = NewDuration(2 * time.Minute)
+	}
+	if cfg.QRLogin.MaxPendingPerIP == 0 {
+		cfg.QRLogin.MaxPendingPerIP = 3
+	}
+	if cfg.QRLogin.CleanupInterval.Duration == 0 {
+		cfg.QRLogin.CleanupInterval = NewDuration(5 * time.Minute)
 	}
 	if cfg.STS.Enabled && cfg.STS.AssertionMaxAge.Duration == 0 {
 		cfg.STS.AssertionMaxAge = NewDuration(5 * time.Minute)
@@ -305,6 +322,15 @@ func (c *Config) validate() error {
 		if c.Passkeys.StateSecret == "" {
 			return fmt.Errorf("passkeys.state_secret resolved empty")
 		}
+	}
+	if c.QRLogin.TTL.Duration <= 0 {
+		return fmt.Errorf("qr_login.ttl must be greater than zero")
+	}
+	if c.QRLogin.MaxPendingPerIP <= 0 {
+		return fmt.Errorf("qr_login.max_pending_per_ip must be greater than zero")
+	}
+	if c.QRLogin.CleanupInterval.Duration <= 0 {
+		return fmt.Errorf("qr_login.cleanup_interval must be greater than zero")
 	}
 
 	return nil
