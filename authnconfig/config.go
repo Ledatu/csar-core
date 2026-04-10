@@ -35,6 +35,7 @@ type Config struct {
 	STS                    STSConfig                      `yaml:"sts,omitempty"`
 	Authz                  AuthzConfig                    `yaml:"authz,omitempty"`
 	Audit                  stsclient.ServiceAuthConfig    `yaml:"audit,omitempty"`
+	StorageClient          stsclient.ServiceAuthConfig    `yaml:"storage_client,omitempty"`
 	BotVerify              *BotVerifyConfig               `yaml:"bot_verify,omitempty"`
 }
 
@@ -278,6 +279,9 @@ func (c *Config) validate() error {
 		return fmt.Errorf("oauth.session_secret is required")
 	}
 	if err := c.Audit.Validate(); err != nil {
+		return err
+	}
+	if err := c.StorageClient.Validate(); err != nil {
 		return err
 	}
 	if len(c.OAuth.Providers) == 0 {

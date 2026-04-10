@@ -61,7 +61,8 @@ type ObjectEntry struct {
 // Client provides access to token objects in S3-compatible storage.
 type Client struct {
 	// For static auth: aws-sdk-go-v2 S3 client.
-	s3Client *s3.Client
+	s3Client      *s3.Client
+	presignClient *s3.PresignClient
 
 	// For IAM-based auth: raw HTTP with X-YaCloud-SubjectToken.
 	iamAuth    bool
@@ -106,6 +107,7 @@ func NewClient(cfg *Config, logger *slog.Logger) (*Client, error) {
 			UsePathStyle: true,
 		})
 		c.s3Client = s3Client
+		c.presignClient = s3.NewPresignClient(s3Client)
 
 	case "iam_token", "oauth_token", "metadata", "service_account":
 		resolver, err := ycloud.NewIAMTokenResolver(&cfg.Auth, nil)
@@ -143,11 +145,18 @@ func (c *Client) GetObject(ctx context.Context, tokenRef string) (ObjectEntry, e
 
 // PutObject writes an object to S3 under the configured prefix.
 func (c *Client) PutObject(ctx context.Context, tokenRef string, body []byte) (string, error) {
+	return c.PutObjectWithOptions(ctx, tokenRef, body, PutObjectOptions{
+		ContentType: "application/json",
+	})
+}
+
+// PutObjectWithOptions writes an object to S3 under the configured prefix.
+func (c *Client) PutObjectWithOptions(ctx context.Context, tokenRef string, body []byte, opts PutObjectOptions) (string, error) {
 	key := c.cfg.Prefix + tokenRef
 	if c.iamAuth {
-		return c.putObjectIAM(ctx, key, body)
+		return c.putObjectIAMWithOptions(ctx, key, body, opts)
 	}
-	return c.putObjectSDK(ctx, key, body)
+	return c.putObjectSDKWithOptions(ctx, key, body, opts)
 }
 
 // DeleteObject removes an object from S3 by token_ref.
@@ -242,12 +251,16 @@ func (c *Client) getObjectSDK(ctx context.Context, key, tokenRef string) (Object
 	}, nil
 }
 
-func (c *Client) putObjectSDK(ctx context.Context, key string, body []byte) (string, error) {
+func (c *Client) putObjectSDKWithOptions(ctx context.Context, key string, body []byte, opts PutObjectOptions) (string, error) {
+	contentType := opts.ContentType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
 	resp, err := c.s3Client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(c.cfg.Bucket),
 		Key:         aws.String(key),
 		Body:        bytes.NewReader(body),
-		ContentType: aws.String("application/json"),
+		ContentType: aws.String(contentType),
 	})
 	if err != nil {
 		return "", fmt.Errorf("s3store: put object %q: %w", key, err)
@@ -424,7 +437,7 @@ func (c *Client) getObjectIAM(ctx context.Context, key, tokenRef string) (Object
 	}, nil
 }
 
-func (c *Client) putObjectIAM(ctx context.Context, key string, body []byte) (string, error) {
+func (c *Client) putObjectIAMWithOptions(ctx context.Context, key string, body []byte, opts PutObjectOptions) (string, error) {
 	token, err := c.resolver.ResolveToken(ctx)
 	if err != nil {
 		return "", fmt.Errorf("s3store: auth: %w", err)
@@ -439,8 +452,12 @@ func (c *Client) putObjectIAM(ctx context.Context, key string, body []byte) (str
 	if err != nil {
 		return "", fmt.Errorf("s3store: build put request: %w", err)
 	}
+	contentType := opts.ContentType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
 	req.Header.Set("X-YaCloud-SubjectToken", token)
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	req.ContentLength = int64(len(body))
 
 	resp, err := c.httpClient.Do(req)

@@ -26,20 +26,20 @@ import (
 type AuthConfig struct {
 	// AuthMode selects the credential source:
 	// "static", "iam_token", "oauth_token", "metadata", "service_account".
-	AuthMode string
+	AuthMode string `yaml:"auth_mode" json:"auth_mode"`
 
 	// IAMToken is a static IAM bearer token (dev/testing).
-	IAMToken secret.Secret
+	IAMToken secret.Secret `yaml:"iam_token" json:"iam_token"`
 
 	// OAuthToken is a Yandex OAuth token exchanged for IAM tokens at runtime.
-	OAuthToken secret.Secret
+	OAuthToken secret.Secret `yaml:"oauth_token" json:"oauth_token"`
 
 	// SAKeyFile is the path to a service-account key JSON file.
-	SAKeyFile string
+	SAKeyFile string `yaml:"sa_key_file" json:"sa_key_file"`
 
 	// Static credentials (for S3-compatible APIs).
-	AccessKeyID     secret.Secret
-	SecretAccessKey secret.Secret
+	AccessKeyID     secret.Secret `yaml:"access_key_id" json:"access_key_id"`
+	SecretAccessKey secret.Secret `yaml:"secret_access_key" json:"secret_access_key"`
 }
 
 // IAMTokenResolver resolves Yandex Cloud IAM tokens with caching and
