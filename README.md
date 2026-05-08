@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ledatu/csar-core/actions/workflows/ci.yml/badge.svg)](https://github.com/ledatu/csar-core/actions/workflows/ci.yml)
 
-Shared Go primitives for the csar service family. Provides pluggable config sourcing, PostgreSQL utilities, S3-compatible storage, Yandex Cloud IAM auth, and safe secret handling.
+Shared Go primitives for the csar service family. Provides pluggable config sourcing, PostgreSQL utilities, router-bound STS clients, HTTP helpers, S3-compatible storage, Yandex Cloud IAM auth, and safe secret handling.
 
 ```
 go get github.com/ledatu/csar-core
@@ -81,6 +81,40 @@ watcher := configsource.NewConfigWatcher(src, applyFn, logger,
     configsource.WithHashPolicy(configsource.HashPinned),
     configsource.WithPinnedHash("a3f1..."),
 )
+```
+
+---
+
+### `httpx` — HTTP JSON and query helpers
+
+Shared request/response helpers used by router-facing services.
+
+```go
+limit, err := httpx.ParseLimit(r, 1000, 100000)
+active, err := httpx.OptionalBool(r.URL.Query().Get("active"))
+ids, err := httpx.ParseInt64List(httpx.Values(r.URL.Query()["nm_id"]))
+httpx.WriteJSON(w, http.StatusOK, payload)
+```
+
+`httpx/clientx` is the outbound JSON client helper for service-to-service calls
+through the router. It enforces response size caps, optional timeouts, typed
+non-2xx errors, and capped error-body logging.
+
+---
+
+### `stsclient` — Router-bound service authentication
+
+Builds HTTP clients that exchange service assertions through STS and attach
+Bearer tokens on router-bound requests. The router transport retries transient
+or retryable idempotent calls with bounded jittered retries.
+
+```go
+client, err := stsclient.NewRouterClient(&stsclient.ServiceAuthConfig{
+    RouterBaseURL: "https://csar:8443",
+    STSEndpoint:   "https://authn:8081/sts/token",
+    Audience:      "csar-authz-svc",
+    ServiceName:   "svc:example",
+}, logger)
 ```
 
 ---

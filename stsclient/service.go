@@ -147,7 +147,7 @@ func NewRouterClient(cfg *ServiceAuthConfig, logger *slog.Logger) (*RouterClient
 	}
 
 	client := &http.Client{
-		Transport: ts.Transport(routerTransport),
+		Transport: ts.Transport(newRetryTransport(routerTransport, logger)),
 	}
 	if cfg.RouterTimeout > 0 {
 		client.Timeout = cfg.RouterTimeout

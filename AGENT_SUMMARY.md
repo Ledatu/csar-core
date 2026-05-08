@@ -11,7 +11,8 @@ Postgres utilities, and secret redaction.
   `csar-authz`, `csar-audit`, `csar-notify`, `csar-botverify`, and the aurum
   services.
 - The practical entrypoints are package APIs such as `gatewayctx`, `jwtx`,
-  `stsclient`, `configload`, `configsource`, `tlsx`, `observe`, and `pgutil`.
+  `stsclient`, `httpx`, `httpx/clientx`, `configload`, `configsource`, `tlsx`,
+  `observe`, and `pgutil`.
 
 ## Trust/Auth Model
 - `gatewayctx` parses trusted identity headers, but it is not trust enforcement.
@@ -24,7 +25,9 @@ Postgres utilities, and secret redaction.
 ## Critical Flows
 - Config loading from file, HTTP, or S3 with hash/integrity validation.
 - Remote JWKS fetch/cache/refresh on key rotation.
-- STS token exchange and router-bound client auth.
+- STS token exchange, bounded router-bound retries, and router-bound client auth.
+- Shared inbound/outbound HTTP helpers, including query parsing and capped JSON
+  response handling.
 - Audit and notify router clients used by multiple services.
 - TLS client/server config generation for mTLS-enabled services.
 
@@ -38,8 +41,8 @@ Postgres utilities, and secret redaction.
 - `gatewayctx` trust assumptions are easy to misuse in downstream services.
 - `jwtx` is a blast-radius package; changes affect authn, authz, and router
   verification behavior.
-- `stsclient`, `configsource`, and `observe` are shared across the ecosystem and
-  require downstream retest when changed.
+- `stsclient`, `httpx`, `httpx/clientx`, `configsource`, and `observe` are shared
+  across the ecosystem and require downstream retest when changed.
 - Any new shared helper should be justified against existing packages before
   adding a duplicate.
 
@@ -48,6 +51,9 @@ Postgres utilities, and secret redaction.
 - `jwtx/verify.go`
 - `jwtx/jwk_remote.go`
 - `stsclient/client.go`
+- `stsclient/service.go`
+- `httpx/query.go`
+- `httpx/clientx/clientx.go`
 - `configload/load.go`
 - `configsource/builder.go`
 - `tlsx/tlsx.go`
