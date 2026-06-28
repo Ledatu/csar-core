@@ -37,6 +37,7 @@ type Config struct {
 	Audit                  stsclient.ServiceAuthConfig    `yaml:"audit,omitempty"`
 	StorageClient          stsclient.ServiceAuthConfig    `yaml:"storage_client,omitempty"`
 	BotVerify              *BotVerifyConfig               `yaml:"bot_verify,omitempty"`
+	LegacyLogin            LegacyLoginConfig              `yaml:"legacy_login,omitempty"`
 }
 
 // AuthzConfig configures the connection to csar-authz for permissions endpoints.
@@ -67,6 +68,22 @@ type BotVerifyConfig struct {
 type BotProviderInfo struct {
 	Provider    string `yaml:"provider"`
 	BotUsername string `yaml:"bot_username"`
+}
+
+// LegacyLoginConfig controls temporary migration-only login bridges.
+type LegacyLoginConfig struct {
+	TelegramJWT LegacyTelegramJWTConfig `yaml:"telegram_jwt,omitempty"`
+}
+
+// LegacyTelegramJWTConfig verifies old Telegram-scoped HS256 JWTs and exchanges
+// them for normal server-side sessions during a migration window.
+type LegacyTelegramJWTConfig struct {
+	Enabled              bool      `yaml:"enabled"`
+	HMACSecret           string    `yaml:"hmac_secret"`
+	Issuer               string    `yaml:"issuer,omitempty"`
+	Audience             string    `yaml:"audience,omitempty"`
+	MaxTokenAge          Duration  `yaml:"max_token_age,omitempty"`
+	EndpointEnabledUntil time.Time `yaml:"endpoint_enabled_until,omitempty"`
 }
 
 // STSConfig controls the Security Token Service for service-to-service auth.
@@ -336,6 +353,23 @@ func (c *Config) validate() error {
 	if c.QRLogin.CleanupInterval.Duration <= 0 {
 		return fmt.Errorf("qr_login.cleanup_interval must be greater than zero")
 	}
+	if err := c.LegacyLogin.validate(); err != nil {
+		return err
+	}
 
+	return nil
+}
+
+func (c *LegacyLoginConfig) validate() error {
+	tg := c.TelegramJWT
+	if !tg.Enabled {
+		return nil
+	}
+	if tg.HMACSecret == "" {
+		return fmt.Errorf("legacy_login.telegram_jwt.hmac_secret is required when enabled")
+	}
+	if tg.MaxTokenAge.Duration < 0 {
+		return fmt.Errorf("legacy_login.telegram_jwt.max_token_age must be greater than or equal to zero")
+	}
 	return nil
 }
