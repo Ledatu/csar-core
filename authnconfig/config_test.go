@@ -200,3 +200,189 @@ legacy_login:
 		t.Fatal("EndpointEnabledUntil should parse from YAML")
 	}
 }
+
+func TestLoadFromBytes_EmailOTPDisabledByDefault(t *testing.T) {
+	yaml := `
+base_url: "https://auth.example.com"
+database:
+  dsn: "postgres://test"
+oauth:
+  session_secret: "secret"
+  providers:
+    - name: "telegram"
+      client_id: "id"
+      client_secret: "secret"
+`
+
+	cfg, err := LoadFromBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadFromBytes() error = %v", err)
+	}
+	if cfg.EmailOTP != nil && cfg.EmailOTP.Enabled {
+		t.Fatal("email OTP should be disabled by default")
+	}
+}
+
+func TestLoadFromBytes_EmailOTPDefaults(t *testing.T) {
+	yaml := `
+base_url: "https://auth.example.com"
+database:
+  dsn: "postgres://test"
+oauth:
+  session_secret: "secret"
+  providers:
+    - name: "telegram"
+      client_id: "id"
+      client_secret: "secret"
+email_otp:
+  enabled: true
+  sender_address: "login@example.com"
+  postbox:
+    auth:
+      auth_mode: "metadata"
+`
+
+	cfg, err := LoadFromBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadFromBytes() error = %v", err)
+	}
+	if cfg.EmailOTP.CodeTTL.Duration != 5*time.Minute {
+		t.Fatalf("EmailOTP.CodeTTL = %v, want 5m", cfg.EmailOTP.CodeTTL.Duration)
+	}
+	if cfg.EmailOTP.MaxPendingPerIP != 3 {
+		t.Fatalf("EmailOTP.MaxPendingPerIP = %d, want 3", cfg.EmailOTP.MaxPendingPerIP)
+	}
+	if cfg.EmailOTP.MaxPendingPerEmail != 3 {
+		t.Fatalf("EmailOTP.MaxPendingPerEmail = %d, want 3", cfg.EmailOTP.MaxPendingPerEmail)
+	}
+	if cfg.EmailOTP.MaxAttempts != 5 {
+		t.Fatalf("EmailOTP.MaxAttempts = %d, want 5", cfg.EmailOTP.MaxAttempts)
+	}
+	if cfg.EmailOTP.Cooldown.Duration != time.Minute {
+		t.Fatalf("EmailOTP.Cooldown = %v, want 1m", cfg.EmailOTP.Cooldown.Duration)
+	}
+	if cfg.EmailOTP.Postbox.Endpoint != "https://postbox.cloud.yandex.net" {
+		t.Fatalf("EmailOTP.Postbox.Endpoint = %q", cfg.EmailOTP.Postbox.Endpoint)
+	}
+	if cfg.EmailOTP.Postbox.Region != "ru-central1" {
+		t.Fatalf("EmailOTP.Postbox.Region = %q", cfg.EmailOTP.Postbox.Region)
+	}
+	if cfg.EmailOTP.Subject == "" {
+		t.Fatal("EmailOTP.Subject should default")
+	}
+}
+
+func TestLoadFromBytes_EmailOTPRequiresSender(t *testing.T) {
+	yaml := `
+base_url: "https://auth.example.com"
+database:
+  dsn: "postgres://test"
+oauth:
+  session_secret: "secret"
+  providers:
+    - name: "telegram"
+      client_id: "id"
+      client_secret: "secret"
+email_otp:
+  enabled: true
+  postbox:
+    auth:
+      auth_mode: "metadata"
+`
+
+	_, err := LoadFromBytes([]byte(yaml))
+	if err == nil {
+		t.Fatal("expected error for missing email_otp.sender_address")
+	}
+	if !strings.Contains(err.Error(), "email_otp.sender_address") {
+		t.Fatalf("error = %v, want sender validation", err)
+	}
+}
+
+func TestLoadFromBytes_EmailOTPRequiresAuthMode(t *testing.T) {
+	yaml := `
+base_url: "https://auth.example.com"
+database:
+  dsn: "postgres://test"
+oauth:
+  session_secret: "secret"
+  providers:
+    - name: "telegram"
+      client_id: "id"
+      client_secret: "secret"
+email_otp:
+  enabled: true
+  sender_address: "login@example.com"
+`
+
+	_, err := LoadFromBytes([]byte(yaml))
+	if err == nil {
+		t.Fatal("expected error for missing postbox auth mode")
+	}
+	if !strings.Contains(err.Error(), "email_otp.postbox.auth.auth_mode") {
+		t.Fatalf("error = %v, want auth mode validation", err)
+	}
+}
+
+func TestLoadFromBytes_EmailOTPExpandsEnv(t *testing.T) {
+	t.Setenv("EMAIL_OTP_FROM_ADDRESS", "login@example.com")
+	t.Setenv("YANDEX_POSTBOX_SA_KEY_FILE", "/run/secrets/yandex-sa.json")
+	yaml := `
+base_url: "https://auth.example.com"
+database:
+  dsn: "postgres://test"
+oauth:
+  session_secret: "secret"
+  providers:
+    - name: "telegram"
+      client_id: "id"
+      client_secret: "secret"
+email_otp:
+  enabled: true
+  sender_address: "${EMAIL_OTP_FROM_ADDRESS}"
+  postbox:
+    auth:
+      auth_mode: "service_account"
+      sa_key_file: "${YANDEX_POSTBOX_SA_KEY_FILE}"
+`
+
+	cfg, err := LoadFromBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadFromBytes() error = %v", err)
+	}
+	if cfg.EmailOTP.SenderAddress != "login@example.com" {
+		t.Fatalf("SenderAddress = %q, want env-expanded address", cfg.EmailOTP.SenderAddress)
+	}
+	if cfg.EmailOTP.Postbox.Auth.SAKeyFile != "/run/secrets/yandex-sa.json" {
+		t.Fatalf("SAKeyFile = %q, want env-expanded path", cfg.EmailOTP.Postbox.Auth.SAKeyFile)
+	}
+}
+
+func TestLoadFromBytes_EmailOTPRejectsInvalidLimits(t *testing.T) {
+	yaml := `
+base_url: "https://auth.example.com"
+database:
+  dsn: "postgres://test"
+oauth:
+  session_secret: "secret"
+  providers:
+    - name: "telegram"
+      client_id: "id"
+      client_secret: "secret"
+email_otp:
+  enabled: true
+  code_ttl: "-1s"
+  sender_address: "login@example.com"
+  postbox:
+    auth:
+      auth_mode: "metadata"
+`
+
+	_, err := LoadFromBytes([]byte(yaml))
+	if err == nil {
+		t.Fatal("expected error for invalid email OTP TTL")
+	}
+	if !strings.Contains(err.Error(), "email_otp.code_ttl") {
+		t.Fatalf("error = %v, want ttl validation", err)
+	}
+}

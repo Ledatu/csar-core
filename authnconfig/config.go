@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ledatu/csar-core/configutil"
+	"github.com/ledatu/csar-core/postbox"
 	"github.com/ledatu/csar-core/stsclient"
 	"gopkg.in/yaml.v3"
 )
@@ -37,6 +38,7 @@ type Config struct {
 	Audit                  stsclient.ServiceAuthConfig    `yaml:"audit,omitempty"`
 	StorageClient          stsclient.ServiceAuthConfig    `yaml:"storage_client,omitempty"`
 	BotVerify              *BotVerifyConfig               `yaml:"bot_verify,omitempty"`
+	EmailOTP               *EmailOTPConfig                `yaml:"email_otp,omitempty"`
 	LegacyLogin            LegacyLoginConfig              `yaml:"legacy_login,omitempty"`
 }
 
@@ -69,6 +71,23 @@ type BotProviderInfo struct {
 	Provider    string `yaml:"provider"`
 	BotUsername string `yaml:"bot_username"`
 }
+
+// EmailOTPConfig controls first-party email one-time-code login and linking.
+type EmailOTPConfig struct {
+	Enabled            bool          `yaml:"enabled"`
+	CodeTTL            Duration      `yaml:"code_ttl"`
+	MaxPendingPerIP    int           `yaml:"max_pending_per_ip"`
+	MaxPendingPerEmail int           `yaml:"max_pending_per_email"`
+	MaxAttempts        int           `yaml:"max_attempts"`
+	Cooldown           Duration      `yaml:"cooldown"`
+	SenderAddress      string        `yaml:"sender_address"`
+	SenderName         string        `yaml:"sender_name,omitempty"`
+	Subject            string        `yaml:"subject"`
+	Postbox            PostboxConfig `yaml:"postbox"`
+}
+
+// PostboxConfig controls outbound mail delivery through Yandex Cloud Postbox.
+type PostboxConfig = postbox.Config
 
 // LegacyLoginConfig controls temporary migration-only login bridges.
 type LegacyLoginConfig struct {
@@ -254,6 +273,27 @@ func LoadFromBytes(data []byte) (*Config, error) {
 			cfg.BotVerify.MaxPendingPerIP = 3
 		}
 	}
+	if cfg.EmailOTP != nil && cfg.EmailOTP.Enabled {
+		if cfg.EmailOTP.CodeTTL.Duration == 0 {
+			cfg.EmailOTP.CodeTTL = NewDuration(5 * time.Minute)
+		}
+		if cfg.EmailOTP.MaxPendingPerIP == 0 {
+			cfg.EmailOTP.MaxPendingPerIP = 3
+		}
+		if cfg.EmailOTP.MaxPendingPerEmail == 0 {
+			cfg.EmailOTP.MaxPendingPerEmail = 3
+		}
+		if cfg.EmailOTP.MaxAttempts == 0 {
+			cfg.EmailOTP.MaxAttempts = 5
+		}
+		if cfg.EmailOTP.Cooldown.Duration == 0 {
+			cfg.EmailOTP.Cooldown = NewDuration(time.Minute)
+		}
+		if cfg.EmailOTP.Subject == "" {
+			cfg.EmailOTP.Subject = "Your AURUMSKYNET sign-in code"
+		}
+		cfg.EmailOTP.Postbox.ApplyDefaults()
+	}
 	if cfg.Passkeys.ChallengeTTL.Duration == 0 {
 		cfg.Passkeys.ChallengeTTL = NewDuration(5 * time.Minute)
 	}
@@ -356,6 +396,9 @@ func (c *Config) validate() error {
 	if err := c.LegacyLogin.validate(); err != nil {
 		return err
 	}
+	if err := c.EmailOTP.validate(); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -372,4 +415,38 @@ func (c *LegacyLoginConfig) validate() error {
 		return fmt.Errorf("legacy_login.telegram_jwt.max_token_age must be greater than or equal to zero")
 	}
 	return nil
+}
+
+func (c *EmailOTPConfig) validate() error {
+	if c == nil || !c.Enabled {
+		return nil
+	}
+	if c.CodeTTL.Duration <= 0 {
+		return fmt.Errorf("email_otp.code_ttl must be greater than zero")
+	}
+	if c.MaxPendingPerIP <= 0 {
+		return fmt.Errorf("email_otp.max_pending_per_ip must be greater than zero")
+	}
+	if c.MaxPendingPerEmail <= 0 {
+		return fmt.Errorf("email_otp.max_pending_per_email must be greater than zero")
+	}
+	if c.MaxAttempts <= 0 {
+		return fmt.Errorf("email_otp.max_attempts must be greater than zero")
+	}
+	if c.Cooldown.Duration < 0 {
+		return fmt.Errorf("email_otp.cooldown must be greater than or equal to zero")
+	}
+	if c.SenderAddress == "" {
+		return fmt.Errorf("email_otp.sender_address is required when enabled")
+	}
+	if c.Subject == "" {
+		return fmt.Errorf("email_otp.subject is required when enabled")
+	}
+	if c.Postbox.Endpoint == "" {
+		return fmt.Errorf("email_otp.postbox.endpoint is required when enabled")
+	}
+	if c.Postbox.Region == "" {
+		return fmt.Errorf("email_otp.postbox.region is required when enabled")
+	}
+	return c.Postbox.Validate("email_otp.postbox")
 }
