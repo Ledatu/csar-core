@@ -40,6 +40,7 @@ type Config struct {
 	BotVerify              *BotVerifyConfig               `yaml:"bot_verify,omitempty"`
 	EmailOTP               *EmailOTPConfig                `yaml:"email_otp,omitempty"`
 	LegacyLogin            LegacyLoginConfig              `yaml:"legacy_login,omitempty"`
+	RouteTokens            map[string]RouteTokenConfig    `yaml:"route_tokens,omitempty"`
 }
 
 // AuthzConfig configures the connection to csar-authz for permissions endpoints.
@@ -309,6 +310,7 @@ func LoadFromBytes(data []byte) (*Config, error) {
 	if cfg.Passkeys.StateSecret == "" {
 		cfg.Passkeys.StateSecret = cfg.OAuth.SessionSecret
 	}
+	cfg.applyRouteTokenDefaults()
 
 	cfg.Health = cfg.Health.WithDefaults()
 
@@ -397,6 +399,9 @@ func (c *Config) validate() error {
 		return err
 	}
 	if err := c.EmailOTP.validate(); err != nil {
+		return err
+	}
+	if err := c.validateRouteTokens(); err != nil {
 		return err
 	}
 

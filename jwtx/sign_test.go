@@ -100,3 +100,49 @@ func TestSignWithConfig(t *testing.T) {
 		t.Fatalf("sub = %v", claims["sub"])
 	}
 }
+
+func TestSignHMACWithConfig(t *testing.T) {
+	secret := []byte("test-secret")
+	cfg := &SigningConfig{
+		Issuer:   "csar-authn",
+		Audience: []string{"telegram-webapp"},
+		TTL:      time.Hour,
+	}
+
+	token, err := SignHMACWithConfig(secret, "HS256", cfg, map[string]any{
+		"id": int64(12345),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parsed, err := jwt.Parse(token, func(token *jwt.Token) (any, error) {
+		if token.Method != jwt.SigningMethodHS256 {
+			t.Fatalf("method = %v, want HS256", token.Method.Alg())
+		}
+		return secret, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !parsed.Valid {
+		t.Fatal("token not valid")
+	}
+	claims, ok := parsed.Claims.(jwt.MapClaims)
+	if !ok {
+		t.Fatal("claims not MapClaims")
+	}
+	if claims["iss"] != "csar-authn" {
+		t.Fatalf("iss = %v", claims["iss"])
+	}
+	if claims["id"] != float64(12345) {
+		t.Fatalf("id = %v", claims["id"])
+	}
+}
+
+func TestSignHMACRejectsUnsupportedAlgorithm(t *testing.T) {
+	_, err := SignHMAC([]byte("secret"), "HS384", jwt.MapClaims{"sub": "user"})
+	if err == nil {
+		t.Fatal("expected unsupported algorithm error")
+	}
+}
