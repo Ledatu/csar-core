@@ -1,6 +1,7 @@
 package authnconfig
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -53,6 +54,49 @@ route_tokens:
 	}
 	if profile.Claims["email"].As != RouteTokenClaimString {
 		t.Fatalf("email claim As = %q, want string", profile.Claims["email"].As)
+	}
+}
+
+func TestLoadFromBytes_RouteTokensTTLDefaultsFromEnv(t *testing.T) {
+	os.Unsetenv("SELLER_TELEGRAM_JWT_TTL")
+	os.Unsetenv("SELLER_TELEGRAM_JWT_MAX_TTL")
+	t.Cleanup(func() {
+		os.Unsetenv("SELLER_TELEGRAM_JWT_TTL")
+		os.Unsetenv("SELLER_TELEGRAM_JWT_MAX_TTL")
+	})
+
+	yaml := `
+base_url: "https://auth.example.com"
+database:
+  dsn: "postgres://example"
+oauth:
+  session_secret: "secret"
+  providers:
+    - name: "telegram"
+      client_id: "id"
+      client_secret: "secret"
+route_tokens:
+  seller-telegram-legacy:
+    enabled: true
+    secret: "secret"
+    ttl: "${SELLER_TELEGRAM_JWT_TTL:-5m}"
+    max_ttl: "${SELLER_TELEGRAM_JWT_MAX_TTL:-1h}"
+    claims:
+      id:
+        source: oauth.telegram.provider_user_id
+        as: int
+`
+
+	cfg, err := LoadFromBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadFromBytes() error = %v", err)
+	}
+	profile := cfg.RouteTokens["seller-telegram-legacy"]
+	if profile.TTL.Duration != 5*time.Minute {
+		t.Fatalf("TTL = %v, want 5m", profile.TTL.Duration)
+	}
+	if profile.MaxTTL.Duration != time.Hour {
+		t.Fatalf("MaxTTL = %v, want 1h", profile.MaxTTL.Duration)
 	}
 }
 

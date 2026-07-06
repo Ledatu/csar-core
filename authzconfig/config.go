@@ -6,12 +6,10 @@ package authzconfig
 
 import (
 	"fmt"
-	"reflect"
 	"time"
 
 	"github.com/ledatu/csar-core/configutil"
 	"github.com/ledatu/csar-core/stsclient"
-	"gopkg.in/yaml.v3"
 )
 
 // Duration is a type alias for the shared configutil.Duration.
@@ -108,11 +106,9 @@ type BootstrapAssignment struct {
 // variables, applying defaults, and validating.
 func LoadFromBytes(data []byte) (*Config, error) {
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err := configutil.UnmarshalYAMLWithEnv(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
-
-	configutil.ExpandEnvInStruct(reflect.ValueOf(&cfg))
 	applyDefaults(&cfg)
 
 	if err := cfg.validate(); err != nil {

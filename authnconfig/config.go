@@ -6,13 +6,11 @@ package authnconfig
 
 import (
 	"fmt"
-	"reflect"
 	"time"
 
 	"github.com/ledatu/csar-core/configutil"
 	"github.com/ledatu/csar-core/postbox"
 	"github.com/ledatu/csar-core/stsclient"
-	"gopkg.in/yaml.v3"
 )
 
 // Config is the top-level csar-authn configuration.
@@ -215,11 +213,9 @@ func NewDuration(d time.Duration) Duration {
 // variables, applying defaults, and validating.
 func LoadFromBytes(data []byte) (*Config, error) {
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err := configutil.UnmarshalYAMLWithEnv(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
-
-	configutil.ExpandEnvInStruct(reflect.ValueOf(&cfg))
 
 	if cfg.ListenAddr == "" {
 		cfg.ListenAddr = ":8081"
