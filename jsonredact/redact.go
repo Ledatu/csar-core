@@ -174,10 +174,18 @@ func RedactSensitiveKeys(data any, mask string) bool {
 	}
 }
 
-// RedactQueryMap redacts sensitive query parameter keys in place.
-func RedactQueryMap(query map[string]string, mask string) {
+// RedactQueryMap redacts query keys matching sensitive patterns and extraKeys (case-insensitive).
+func RedactQueryMap(query map[string]string, mask string, extraKeys ...string) {
+	lookup := make(map[string]struct{}, len(extraKeys))
+	for _, k := range extraKeys {
+		lookup[strings.ToLower(k)] = struct{}{}
+	}
 	for k := range query {
 		if logutil.IsSensitiveKey(k) {
+			query[k] = mask
+			continue
+		}
+		if _, ok := lookup[strings.ToLower(k)]; ok {
 			query[k] = mask
 		}
 	}

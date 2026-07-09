@@ -47,3 +47,14 @@ func TestRedactQueryMap(t *testing.T) {
 		t.Fatalf("campaignId = %q", q["campaignId"])
 	}
 }
+
+func TestRedactQueryMapExtraKeys(t *testing.T) {
+	q := map[string]string{"campaignId": "1", "wbToken": "secret"}
+	RedactQueryMap(q, "[REDACTED]", "wbToken", "apiKey")
+	if q["wbToken"] != "[REDACTED]" {
+		t.Fatalf("wbToken = %q", q["wbToken"])
+	}
+	if q["campaignId"] != "1" {
+		t.Fatalf("campaignId = %q", q["campaignId"])
+	}
+}
