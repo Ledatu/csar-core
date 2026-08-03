@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ledatu/csar-core/gatewayctx"
 	"github.com/ledatu/csar-core/jwtx"
 )
 
@@ -103,5 +104,118 @@ func TestRefreshWindowForExpiresIn(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("refreshWindowForExpiresIn(%d) = %v, want %v", tc.in, got, tc.want)
 		}
+	}
+}
+
+// TestBearerTransport_PreservesUpstreamAuthorization pins the header contract
+// that service-to-service auth depends on: the STS token goes into
+// X-Csar-Authorization, and a caller-supplied Authorization survives untouched.
+//
+// Regression guard. These used to be the same header, so a caller passing an
+// upstream credential in Authorization had it silently overwritten by the STS
+// token and the credential never left the process.
+func TestBearerTransport_PreservesUpstreamAuthorization(t *testing.T) {
+	kp, err := jwtx.GenerateKeyPair("EdDSA")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(tokenResponse{
+			AccessToken: "sts-access-token",
+			TokenType:   "Bearer",
+			ExpiresIn:   3600,
+		})
+	}))
+	defer sts.Close()
+
+	var gotCsarAuth, gotAuth string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCsarAuth = r.Header.Get(gatewayctx.HeaderCsarAuthorization)
+		gotAuth = r.Header.Get("Authorization")
+	}))
+	defer upstream.Close()
+
+	ts, err := New(&Config{
+		STSEndpoint:       sts.URL,
+		Audience:          "test-aud",
+		ServiceName:       "svc:test",
+		AssertionAudience: "http://issuer",
+		KeyPair:           kp,
+		HTTPClient:        sts.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client := &http.Client{Transport: ts.Transport(upstream.Client().Transport)}
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, upstream.URL, http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer upstream-api-key")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if want := "Bearer sts-access-token"; gotCsarAuth != want {
+		t.Errorf("%s = %q, want %q", gatewayctx.HeaderCsarAuthorization, gotCsarAuth, want)
+	}
+	if want := "Bearer upstream-api-key"; gotAuth != want {
+		t.Errorf("Authorization = %q, want %q — the caller credential must not be clobbered", gotAuth, want)
+	}
+}
+
+// TestBearerTransport_DoesNotSetAuthorization ensures the STS token never lands
+// in Authorization when the caller set no upstream credential, so a route that
+// proxies Authorization verbatim cannot leak the internal token upstream.
+func TestBearerTransport_DoesNotSetAuthorization(t *testing.T) {
+	kp, err := jwtx.GenerateKeyPair("EdDSA")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(tokenResponse{
+			AccessToken: "sts-access-token",
+			TokenType:   "Bearer",
+			ExpiresIn:   3600,
+		})
+	}))
+	defer sts.Close()
+
+	var gotAuth string
+	var hadAuth bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		_, hadAuth = r.Header["Authorization"]
+	}))
+	defer upstream.Close()
+
+	ts, err := New(&Config{
+		STSEndpoint:       sts.URL,
+		Audience:          "test-aud",
+		ServiceName:       "svc:test",
+		AssertionAudience: "http://issuer",
+		KeyPair:           kp,
+		HTTPClient:        sts.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client := &http.Client{Transport: ts.Transport(upstream.Client().Transport)}
+	resp, err := client.Get(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if hadAuth {
+		t.Errorf("Authorization was set to %q, want absent — the STS token must not reach the upstream", gotAuth)
 	}
 }

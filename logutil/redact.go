@@ -24,6 +24,9 @@ var sensitiveKeys = map[string]struct{}{
 	"cookie":        {},
 	"set-cookie":    {},
 	"x-api-key":     {},
+	// Also caught by the "authorization" substring rule below, but listed
+	// explicitly so an exact-match consumer (jsonredact.RedactKeys) covers it.
+	"x-csar-authorization": {},
 }
 
 const redactedValue = "[REDACTED]"

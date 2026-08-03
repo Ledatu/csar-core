@@ -37,6 +37,18 @@ const (
 	HeaderAuthzResult = "X-Gateway-Authz-Result" // e.g. "allow", "deny"
 )
 
+// HeaderCsarAuthorization carries the service-to-service access token from a
+// caller to the csar router. Note the direction is the opposite of the
+// X-Gateway-* headers above: those are asserted by the gateway to a backend,
+// this one is presented by a client to the gateway.
+//
+// It is deliberately not Authorization. The router proxies Authorization
+// through to the upstream untouched on routes without a credential-injection
+// profile, so the two must not share a header: a caller has to be able to
+// authenticate the hop to csar and still pass its own upstream credential.
+// The router strips this header before proxying.
+const HeaderCsarAuthorization = "X-Csar-Authorization"
+
 // Identity holds the request context forwarded by the gateway.
 type Identity struct {
 	RequestID   string

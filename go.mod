@@ -9,7 +9,7 @@ require (
 	github.com/aws/smithy-go v1.25.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.9.2
+	github.com/jackc/pgx/v5 v5.10.0
 	github.com/ledatu/csar-proto v0.1.4
 	github.com/prometheus/client_golang v1.23.2
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.68.0

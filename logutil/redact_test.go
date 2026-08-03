@@ -86,6 +86,8 @@ func TestIsSensitiveKey(t *testing.T) {
 		{"authorization", true},
 		{"Authorization", true},
 		{"AUTHORIZATION", true},
+		{"X-Csar-Authorization", true},
+		{"x-csar-authorization", true},
 		{"password", true},
 		{"x-api-key", true},
 		{"bearer", true},

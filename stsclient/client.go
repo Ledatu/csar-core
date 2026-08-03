@@ -18,6 +18,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 
+	"github.com/ledatu/csar-core/gatewayctx"
 	"github.com/ledatu/csar-core/jwtx"
 )
 
@@ -189,7 +190,9 @@ func (ts *TokenSource) signAssertion() (string, error) {
 	return tok, nil
 }
 
-// bearerTransport injects Authorization: Bearer <token> from TokenSource.
+// bearerTransport injects X-Csar-Authorization: Bearer <token> from TokenSource.
+// Authorization is left untouched so callers can pass an upstream credential
+// through the router on routes that proxy it verbatim.
 type bearerTransport struct {
 	base   http.RoundTripper
 	source *TokenSource
@@ -210,6 +213,6 @@ func (t *bearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	req2 := req.Clone(ctx)
-	req2.Header.Set("Authorization", "Bearer "+tok)
+	req2.Header.Set(gatewayctx.HeaderCsarAuthorization, "Bearer "+tok)
 	return t.base.RoundTrip(req2)
 }
