@@ -73,7 +73,7 @@ type EnvExpandable interface {
 //   - Non-string primitives (bool, int, float, etc.): skipped.
 func ExpandEnvInStruct(v reflect.Value) {
 	switch v.Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if !v.IsNil() {
 			ExpandEnvInStruct(v.Elem())
 		}
