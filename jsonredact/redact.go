@@ -14,9 +14,9 @@ const DefaultMask = "[REDACTED]"
 
 // Config controls JSON parsing and redaction.
 type Config struct {
-	PathFields      []string
-	SensitiveKeys   []string
-	Mask            string
+	PathFields    []string
+	SensitiveKeys []string
+	Mask          string
 }
 
 // ParseAndRedactJSON parses raw JSON and applies path + sensitive-key redaction.

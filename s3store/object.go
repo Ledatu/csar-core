@@ -31,9 +31,9 @@ type PutObjectOptions struct {
 
 // PresignPutOptions controls a client-upload presigned PUT operation.
 type PresignPutOptions struct {
-	ExpiresIn              time.Duration
-	ContentType            string
-	ChecksumSHA256Base64   string
+	ExpiresIn            time.Duration
+	ContentType          string
+	ChecksumSHA256Base64 string
 }
 
 // PresignGetOptions controls a presigned GET operation.

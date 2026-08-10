@@ -9,13 +9,13 @@ import "fmt"
 type Code string
 
 const (
-	CodeValidation  Code = "VALIDATION_ERROR"
-	CodeNotFound    Code = "NOT_FOUND"
-	CodeConflict    Code = "CONFLICT"
-	CodeInternal    Code = "INTERNAL"
-	CodeUnavailable Code = "UNAVAILABLE"
-	CodeRateLimited Code = "RATE_LIMITED"
-	CodeForbidden   Code = "FORBIDDEN"
+	CodeValidation   Code = "VALIDATION_ERROR"
+	CodeNotFound     Code = "NOT_FOUND"
+	CodeConflict     Code = "CONFLICT"
+	CodeInternal     Code = "INTERNAL"
+	CodeUnavailable  Code = "UNAVAILABLE"
+	CodeRateLimited  Code = "RATE_LIMITED"
+	CodeForbidden    Code = "FORBIDDEN"
 	CodeUnauthorized Code = "UNAUTHORIZED"
 )
 

@@ -63,9 +63,9 @@ type TokenSource struct {
 	client *http.Client
 	logger *slog.Logger
 
-	mu       sync.Mutex
-	token    string
-	expiry   time.Time
+	mu        sync.Mutex
+	token     string
+	expiry    time.Time
 	assertTTL time.Duration
 }
 
