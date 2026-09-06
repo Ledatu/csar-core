@@ -204,3 +204,55 @@ func TestSplitCSV_Edge(t *testing.T) {
 		}
 	}
 }
+
+func TestFromRequest_AuthzScopeAndPolicy(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Header.Set(HeaderAuthzScope, "platform, tenant")
+	r.Header.Set(HeaderAuthzPolicy, "campaign-read")
+
+	id := FromRequest(r)
+
+	if !reflect.DeepEqual(id.AuthzScopes, []string{"platform", "tenant"}) {
+		t.Errorf("AuthzScopes = %v, want [platform tenant]", id.AuthzScopes)
+	}
+	if id.AuthzPolicy != "campaign-read" {
+		t.Errorf("AuthzPolicy = %q, want %q", id.AuthzPolicy, "campaign-read")
+	}
+	if !id.IsPlatformActor() {
+		t.Error("IsPlatformActor() = false, want true when platform scope granted access")
+	}
+}
+
+func TestIsPlatformActor_TenantOnly(t *testing.T) {
+	id := Identity{AuthzScopes: []string{"tenant"}}
+	if id.IsPlatformActor() {
+		t.Error("IsPlatformActor() = true, want false for tenant-only grant")
+	}
+	empty := Identity{}
+	if empty.IsPlatformActor() {
+		t.Error("IsPlatformActor() = true, want false when no authz scope present")
+	}
+}
+
+func TestStripTrusted(t *testing.T) {
+	h := http.Header{}
+	for _, name := range TrustedHeaders {
+		h.Set(name, "spoofed")
+	}
+	h.Set(HeaderRequestID, "keep-me")
+	h.Set("X-User-Email", "keep-me")
+
+	StripTrusted(h)
+
+	for _, name := range TrustedHeaders {
+		if got := h.Get(name); got != "" {
+			t.Errorf("%s = %q after StripTrusted, want empty", name, got)
+		}
+	}
+	if h.Get(HeaderRequestID) != "keep-me" {
+		t.Errorf("%s was stripped; request IDs are managed by the router, not by StripTrusted", HeaderRequestID)
+	}
+	if h.Get("X-User-Email") != "keep-me" {
+		t.Error("non-gateway header was stripped")
+	}
+}

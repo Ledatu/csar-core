@@ -35,7 +35,29 @@ const (
 	HeaderRoles       = "X-Gateway-Roles"        // comma-separated
 	HeaderScopes      = "X-Gateway-Scopes"       // comma-separated
 	HeaderAuthzResult = "X-Gateway-Authz-Result" // e.g. "allow", "deny"
+	HeaderAuthzScope  = "X-Gateway-Authz-Scope"  // comma-separated scope types that granted access: "platform", "tenant"
+	HeaderAuthzPolicy = "X-Gateway-Authz-Policy" // name of the route authz policy (branch) that granted access
 )
+
+// TrustedHeaders lists every identity header a backend may rely on. The
+// gateway removes client-supplied values for all of them on every request
+// before any validation step re-injects the ones it can vouch for.
+var TrustedHeaders = []string{
+	HeaderSubject,
+	HeaderTenant,
+	HeaderRoles,
+	HeaderScopes,
+	HeaderAuthzResult,
+	HeaderAuthzScope,
+	HeaderAuthzPolicy,
+}
+
+// StripTrusted removes every TrustedHeaders entry from h.
+func StripTrusted(h http.Header) {
+	for _, name := range TrustedHeaders {
+		h.Del(name)
+	}
+}
 
 // HeaderCsarAuthorization carries the service-to-service access token from a
 // caller to the csar router. Note the direction is the opposite of the
@@ -57,6 +79,20 @@ type Identity struct {
 	Roles       []string
 	Scopes      []string
 	AuthzResult string
+	AuthzScopes []string
+	AuthzPolicy string
+}
+
+// IsPlatformActor reports whether the authz decision was satisfied by a
+// platform-scoped assignment, i.e. the caller acts as platform staff rather
+// than as a member of the tenant the request targets.
+func (id *Identity) IsPlatformActor() bool {
+	for _, scope := range id.AuthzScopes {
+		if scope == "platform" {
+			return true
+		}
+	}
+	return false
 }
 
 // SubjectUUID parses the Subject as a UUID. Returns an error if empty or invalid.
@@ -79,6 +115,8 @@ func FromRequest(r *http.Request) Identity {
 		Roles:       splitCSV(r.Header.Get(HeaderRoles)),
 		Scopes:      splitCSV(r.Header.Get(HeaderScopes)),
 		AuthzResult: r.Header.Get(HeaderAuthzResult),
+		AuthzScopes: splitCSV(r.Header.Get(HeaderAuthzScope)),
+		AuthzPolicy: r.Header.Get(HeaderAuthzPolicy),
 	}
 }
 
