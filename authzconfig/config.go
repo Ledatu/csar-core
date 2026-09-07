@@ -38,6 +38,11 @@ type AdminConfig struct {
 	AllowedClientCN  string                `yaml:"allowed_client_cn"`
 	DelegatableRoles []string              `yaml:"delegatable_roles"`
 	AuditRequired    bool                  `yaml:"audit_required"`
+	// ServiceAssignableRoles lists the roles the service-facing /svc endpoints
+	// may assign or revoke in tenant scope. Service callers are identified only
+	// by their gateway subject, so this list is the sole bound on what a
+	// service can grant. Empty denies every service role write.
+	ServiceAssignableRoles []string `yaml:"service_assignable_roles"`
 }
 
 // StoreConfig configures the persistence backend.
@@ -175,6 +180,15 @@ func (c *Config) validate() error {
 	if len(c.Policy.Assignments) > 0 {
 		return fmt.Errorf("policy.assignments is no longer supported; " +
 			"assignments are now runtime-managed via the admin API or --bootstrap-admin")
+	}
+
+	for i, role := range c.Admin.ServiceAssignableRoles {
+		if role == "" {
+			return fmt.Errorf("admin.service_assignable_roles[%d] is empty", i)
+		}
+		if _, ok := roleNames[role]; !ok {
+			return fmt.Errorf("admin.service_assignable_roles[%d]: role %q is not defined in policy.roles", i, role)
+		}
 	}
 
 	for i, ba := range c.BootstrapAssignments {
