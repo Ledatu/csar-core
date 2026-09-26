@@ -96,8 +96,18 @@ type LegacyLoginConfig struct {
 	TelegramJWT LegacyTelegramJWTConfig `yaml:"telegram_jwt,omitempty"`
 }
 
-// DefaultLegacyUsersSyncMaxUsers caps one legacy users sync request.
-const DefaultLegacyUsersSyncMaxUsers = 20000
+// Defaults for the legacy users sync request and apply caps.
+const (
+	DefaultLegacyUsersSyncMaxUsers   = 20000
+	DefaultLegacyUsersSyncMaxLinks   = 100
+	DefaultLegacyUsersSyncMaxCreates = 20
+)
+
+// Legacy users sync apply actions.
+const (
+	LegacyUsersSyncActionLink   = "link"
+	LegacyUsersSyncActionCreate = "create"
+)
 
 // LegacyUsersSyncConfig gates the service endpoint that reconciles legacy
 // Mongo user identities into authn users and provider links.
@@ -107,7 +117,17 @@ type LegacyUsersSyncConfig struct {
 	MaxUsers        int      `yaml:"max_users,omitempty"`
 	// IdentityOverrides maps legacy user ids whose Telegram link id differs
 	// from the id stored in Mongo to their authn user id.
-	IdentityOverrides map[int64]string `yaml:"identity_overrides,omitempty"`
+	IdentityOverrides map[int64]string           `yaml:"identity_overrides,omitempty"`
+	Apply             LegacyUsersSyncApplyConfig `yaml:"apply,omitempty"`
+}
+
+// LegacyUsersSyncApplyConfig lists the writes an apply request may run. A
+// request asking for more than the plan's cap of an action runs none of it.
+type LegacyUsersSyncApplyConfig struct {
+	Enabled    bool     `yaml:"enabled"`
+	Actions    []string `yaml:"actions,omitempty"`
+	MaxLinks   int      `yaml:"max_links,omitempty"`
+	MaxCreates int      `yaml:"max_creates,omitempty"`
 }
 
 // LegacyTelegramJWTConfig verifies old Telegram-scoped HS256 JWTs and exchanges
@@ -269,6 +289,12 @@ func LoadFromBytes(data []byte) (*Config, error) {
 	}
 	if cfg.LegacyUsersSync.MaxUsers == 0 {
 		cfg.LegacyUsersSync.MaxUsers = DefaultLegacyUsersSyncMaxUsers
+	}
+	if cfg.LegacyUsersSync.Apply.MaxLinks == 0 {
+		cfg.LegacyUsersSync.Apply.MaxLinks = DefaultLegacyUsersSyncMaxLinks
+	}
+	if cfg.LegacyUsersSync.Apply.MaxCreates == 0 {
+		cfg.LegacyUsersSync.Apply.MaxCreates = DefaultLegacyUsersSyncMaxCreates
 	}
 	if cfg.QRLogin.TTL.Duration == 0 {
 		cfg.QRLogin.TTL = NewDuration(2 * time.Minute)
@@ -459,6 +485,14 @@ func (c *LegacyUsersSyncConfig) validate() error {
 	for legacyID, userID := range c.IdentityOverrides {
 		if _, err := uuid.Parse(userID); err != nil {
 			return fmt.Errorf("legacy_users_sync.identity_overrides[%d]: %q is not a user id", legacyID, userID)
+		}
+	}
+	if c.Apply.MaxLinks < 0 || c.Apply.MaxCreates < 0 {
+		return fmt.Errorf("legacy_users_sync.apply caps must not be negative")
+	}
+	for _, action := range c.Apply.Actions {
+		if action != LegacyUsersSyncActionLink && action != LegacyUsersSyncActionCreate {
+			return fmt.Errorf("legacy_users_sync.apply.actions: unknown action %q", action)
 		}
 	}
 	return nil

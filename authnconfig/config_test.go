@@ -428,6 +428,28 @@ legacy_users_sync:
 	if !got.Enabled || got.MaxUsers != 500 || got.IdentityOverrides[933839157] != "0b9d6a0e-3a4f-4a55-9d4c-2f1f0f6f7a11" {
 		t.Fatalf("legacy users sync = %+v", got)
 	}
+	if got.Apply.Enabled || got.Apply.MaxLinks != DefaultLegacyUsersSyncMaxLinks || got.Apply.MaxCreates != DefaultLegacyUsersSyncMaxCreates {
+		t.Fatalf("apply defaults = %+v", got.Apply)
+	}
+}
+
+func TestLoadFromBytes_LegacyUsersSyncApply(t *testing.T) {
+	cfg, err := LoadFromBytes([]byte(legacyUsersSyncBaseYAML + `
+legacy_users_sync:
+  enabled: true
+  allowed_subjects: ["svc:legacy-identity-sync"]
+  apply:
+    enabled: true
+    actions: ["link"]
+    max_links: 30
+`))
+	if err != nil {
+		t.Fatalf("LoadFromBytes() error = %v", err)
+	}
+	got := cfg.LegacyUsersSync.Apply
+	if !got.Enabled || len(got.Actions) != 1 || got.Actions[0] != LegacyUsersSyncActionLink || got.MaxLinks != 30 || got.MaxCreates != DefaultLegacyUsersSyncMaxCreates {
+		t.Fatalf("apply = %+v", got)
+	}
 }
 
 func TestLoadFromBytes_LegacyUsersSyncValidation(t *testing.T) {
@@ -450,6 +472,20 @@ legacy_users_sync:
   allowed_subjects: ["svc:legacy-identity-sync"]
   max_users: -1
 `, "legacy_users_sync.max_users"},
+		"unknown action": {`
+legacy_users_sync:
+  enabled: true
+  allowed_subjects: ["svc:legacy-identity-sync"]
+  apply:
+    actions: ["merge"]
+`, "unknown action"},
+		"negative apply cap": {`
+legacy_users_sync:
+  enabled: true
+  allowed_subjects: ["svc:legacy-identity-sync"]
+  apply:
+    max_links: -1
+`, "caps must not be negative"},
 		"bad override": {`
 legacy_users_sync:
   enabled: true
