@@ -6,8 +6,10 @@ package authnconfig
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/ledatu/csar-core/configutil"
 	"github.com/ledatu/csar-core/postbox"
 	"github.com/ledatu/csar-core/stsclient"
@@ -38,6 +40,7 @@ type Config struct {
 	BotVerify              *BotVerifyConfig               `yaml:"bot_verify,omitempty"`
 	EmailOTP               *EmailOTPConfig                `yaml:"email_otp,omitempty"`
 	LegacyLogin            LegacyLoginConfig              `yaml:"legacy_login,omitempty"`
+	LegacyUsersSync        LegacyUsersSyncConfig          `yaml:"legacy_users_sync,omitempty"`
 	RouteTokens            map[string]RouteTokenConfig    `yaml:"route_tokens,omitempty"`
 }
 
@@ -91,6 +94,20 @@ type PostboxConfig = postbox.Config
 // LegacyLoginConfig controls temporary migration-only login bridges.
 type LegacyLoginConfig struct {
 	TelegramJWT LegacyTelegramJWTConfig `yaml:"telegram_jwt,omitempty"`
+}
+
+// DefaultLegacyUsersSyncMaxUsers caps one legacy users sync request.
+const DefaultLegacyUsersSyncMaxUsers = 20000
+
+// LegacyUsersSyncConfig gates the service endpoint that reconciles legacy
+// Mongo user identities into authn users and provider links.
+type LegacyUsersSyncConfig struct {
+	Enabled         bool     `yaml:"enabled"`
+	AllowedSubjects []string `yaml:"allowed_subjects,omitempty"`
+	MaxUsers        int      `yaml:"max_users,omitempty"`
+	// IdentityOverrides maps legacy user ids whose Telegram link id differs
+	// from the id stored in Mongo to their authn user id.
+	IdentityOverrides map[int64]string `yaml:"identity_overrides,omitempty"`
 }
 
 // LegacyTelegramJWTConfig verifies old Telegram-scoped HS256 JWTs and exchanges
@@ -250,6 +267,9 @@ func LoadFromBytes(data []byte) (*Config, error) {
 	if cfg.Session.CleanupInterval.Duration == 0 {
 		cfg.Session.CleanupInterval = NewDuration(1 * time.Hour)
 	}
+	if cfg.LegacyUsersSync.MaxUsers == 0 {
+		cfg.LegacyUsersSync.MaxUsers = DefaultLegacyUsersSyncMaxUsers
+	}
 	if cfg.QRLogin.TTL.Duration == 0 {
 		cfg.QRLogin.TTL = NewDuration(2 * time.Minute)
 	}
@@ -394,6 +414,9 @@ func (c *Config) validate() error {
 	if err := c.LegacyLogin.validate(); err != nil {
 		return err
 	}
+	if err := c.LegacyUsersSync.validate(); err != nil {
+		return err
+	}
 	if err := c.EmailOTP.validate(); err != nil {
 		return err
 	}
@@ -414,6 +437,29 @@ func (c *LegacyLoginConfig) validate() error {
 	}
 	if tg.MaxTokenAge.Duration < 0 {
 		return fmt.Errorf("legacy_login.telegram_jwt.max_token_age must be greater than or equal to zero")
+	}
+	return nil
+}
+
+func (c *LegacyUsersSyncConfig) validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	if len(c.AllowedSubjects) == 0 {
+		return fmt.Errorf("legacy_users_sync.allowed_subjects is required when enabled")
+	}
+	for _, subject := range c.AllowedSubjects {
+		if !strings.HasPrefix(subject, "svc:") {
+			return fmt.Errorf("legacy_users_sync.allowed_subjects: %q is not a service subject", subject)
+		}
+	}
+	if c.MaxUsers < 0 {
+		return fmt.Errorf("legacy_users_sync.max_users must be greater than zero")
+	}
+	for legacyID, userID := range c.IdentityOverrides {
+		if _, err := uuid.Parse(userID); err != nil {
+			return fmt.Errorf("legacy_users_sync.identity_overrides[%d]: %q is not a user id", legacyID, userID)
+		}
 	}
 	return nil
 }

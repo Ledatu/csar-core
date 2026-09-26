@@ -386,3 +386,84 @@ email_otp:
 		t.Fatalf("error = %v, want ttl validation", err)
 	}
 }
+
+const legacyUsersSyncBaseYAML = `
+base_url: "https://auth.example.com"
+database:
+  dsn: "postgres://test"
+oauth:
+  session_secret: "secret"
+  providers:
+    - name: "telegram"
+      client_id: "id"
+      client_secret: "secret"
+`
+
+func TestLoadFromBytes_LegacyUsersSyncDisabledByDefault(t *testing.T) {
+	cfg, err := LoadFromBytes([]byte(legacyUsersSyncBaseYAML))
+	if err != nil {
+		t.Fatalf("LoadFromBytes() error = %v", err)
+	}
+	if cfg.LegacyUsersSync.Enabled {
+		t.Fatal("legacy users sync should be disabled by default")
+	}
+	if cfg.LegacyUsersSync.MaxUsers != DefaultLegacyUsersSyncMaxUsers {
+		t.Fatalf("max_users = %d, want %d", cfg.LegacyUsersSync.MaxUsers, DefaultLegacyUsersSyncMaxUsers)
+	}
+}
+
+func TestLoadFromBytes_LegacyUsersSync(t *testing.T) {
+	cfg, err := LoadFromBytes([]byte(legacyUsersSyncBaseYAML + `
+legacy_users_sync:
+  enabled: true
+  allowed_subjects: ["svc:legacy-identity-sync"]
+  max_users: 500
+  identity_overrides:
+    933839157: "0b9d6a0e-3a4f-4a55-9d4c-2f1f0f6f7a11"
+`))
+	if err != nil {
+		t.Fatalf("LoadFromBytes() error = %v", err)
+	}
+	got := cfg.LegacyUsersSync
+	if !got.Enabled || got.MaxUsers != 500 || got.IdentityOverrides[933839157] != "0b9d6a0e-3a4f-4a55-9d4c-2f1f0f6f7a11" {
+		t.Fatalf("legacy users sync = %+v", got)
+	}
+}
+
+func TestLoadFromBytes_LegacyUsersSyncValidation(t *testing.T) {
+	cases := map[string]struct {
+		section string
+		want    string
+	}{
+		"no subjects": {`
+legacy_users_sync:
+  enabled: true
+`, "legacy_users_sync.allowed_subjects is required"},
+		"user subject": {`
+legacy_users_sync:
+  enabled: true
+  allowed_subjects: ["user-1"]
+`, "is not a service subject"},
+		"negative cap": {`
+legacy_users_sync:
+  enabled: true
+  allowed_subjects: ["svc:legacy-identity-sync"]
+  max_users: -1
+`, "legacy_users_sync.max_users"},
+		"bad override": {`
+legacy_users_sync:
+  enabled: true
+  allowed_subjects: ["svc:legacy-identity-sync"]
+  identity_overrides:
+    1: "not-a-uuid"
+`, "legacy_users_sync.identity_overrides[1]"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := LoadFromBytes([]byte(legacyUsersSyncBaseYAML + tc.section))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
