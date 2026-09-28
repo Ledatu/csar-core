@@ -12,6 +12,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ledatu/csar-core/gatewayctx"
@@ -47,6 +48,11 @@ type Error struct {
 	Path   string
 	Method string
 	Body   []byte
+	// Origin identifies the layer that most likely produced the failure. A
+	// standard CSAR error envelope is reported as "csar"; unmarked HTTP
+	// responses remain "upstream_or_gateway" because the router can proxy an
+	// upstream status and body verbatim.
+	Origin string
 	Err    error
 }
 
@@ -92,6 +98,7 @@ func DoJSON[T any](ctx context.Context, req *http.Request, opts Options) (T, *Er
 			Method: req.Method,
 			Path:   req.URL.Path,
 			Body:   capped,
+			Origin: "client_decode",
 			Err:    fmt.Errorf("clientx: decode body: %w", err),
 		}
 	}
@@ -125,10 +132,12 @@ func exec(ctx context.Context, req *http.Request, opts Options) ([]byte, int, *E
 
 	resp, err := client.Do(req)
 	if err != nil {
+		cause := fmt.Errorf("clientx: request failed: %w", err)
 		return nil, 0, &Error{
 			Method: req.Method,
 			Path:   req.URL.Path,
-			Err:    fmt.Errorf("clientx: request failed: %w", err),
+			Origin: classifyTransportOrigin(cause),
+			Err:    cause,
 		}
 	}
 	defer func() {
@@ -142,29 +151,34 @@ func exec(ctx context.Context, req *http.Request, opts Options) ([]byte, int, *E
 			Status: resp.StatusCode,
 			Method: req.Method,
 			Path:   req.URL.Path,
+			Origin: classifyResponseOrigin(nil, resp.Header),
 			Err:    fmt.Errorf("clientx: read body: %w", readErr),
 		}
 	}
 
 	if int64(len(raw)) > maxBytes {
-		logOversize(ctx, opts, req, resp.StatusCode)
+		origin := classifyResponseOrigin(nil, resp.Header)
+		logOversize(ctx, opts, req, resp.StatusCode, origin)
 		return nil, resp.StatusCode, &Error{
 			Status: resp.StatusCode,
 			Method: req.Method,
 			Path:   req.URL.Path,
 			Body:   nil,
+			Origin: origin,
 			Err:    ErrResponseTooLarge,
 		}
 	}
 
 	if !isSuccess(resp.StatusCode, opts.SuccessStatuses) {
 		capped, truncated := capBody(raw)
-		logNonSuccess(ctx, opts, req, resp.StatusCode, truncated)
+		origin := classifyResponseOrigin(capped, resp.Header)
+		logNonSuccess(ctx, opts, req, resp.StatusCode, truncated, origin)
 		return nil, resp.StatusCode, &Error{
 			Status: resp.StatusCode,
 			Method: req.Method,
 			Path:   req.URL.Path,
 			Body:   capped,
+			Origin: origin,
 		}
 	}
 
@@ -194,7 +208,69 @@ func capBody(raw []byte) ([]byte, bool) {
 	return out, true
 }
 
-func logNonSuccess(ctx context.Context, opts Options, req *http.Request, status int, truncated bool) {
+// ErrorOrigin returns the failure source recorded by clientx. It also
+// classifies manually constructed Errors, which keeps application-level error
+// logs consistent with the common client log.
+func ErrorOrigin(err *Error) string {
+	if err == nil {
+		return "unknown"
+	}
+	if err.Origin != "" {
+		return err.Origin
+	}
+	if err.Status != 0 {
+		return classifyResponseOrigin(err.Body, nil)
+	}
+	return classifyTransportOrigin(err.Err)
+}
+
+func classifyResponseOrigin(body []byte, header http.Header) string {
+	if strings.TrimSpace(header.Get("X-CSAR-Status")) != "" || hasCSARErrorEnvelope(body) {
+		return "csar"
+	}
+	return "upstream_or_gateway"
+}
+
+func hasCSARErrorEnvelope(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	var envelope struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(envelope.Code)) {
+	case "route_not_found", "access_denied", "auth_failed", "throttled",
+		"circuit_open", "backpressure", "upstream_error", "no_healthy_upstream",
+		"tenant_not_found", "response_too_large", "security_error":
+		return true
+	default:
+		return false
+	}
+}
+
+func classifyTransportOrigin(err error) string {
+	message := ""
+	if err != nil {
+		message = strings.ToLower(err.Error())
+	}
+	switch {
+	case strings.Contains(message, "stsclient:"), strings.Contains(message, "/sts/token"):
+		return "csar_authn_sts"
+	case strings.Contains(message, "x509:"), strings.Contains(message, "tls"):
+		return "tls_transport"
+	case strings.Contains(message, "lookup "), strings.Contains(message, "dial tcp"):
+		return "network_transport"
+	case errors.Is(err, context.DeadlineExceeded), strings.Contains(message, "context deadline exceeded"), strings.Contains(message, "timeout"):
+		return "timeout"
+	default:
+		return "http_client"
+	}
+}
+
+func logNonSuccess(ctx context.Context, opts Options, req *http.Request, status int, truncated bool, origin string) {
 	logger := opts.Logger
 	if logger == nil {
 		logger = slog.Default()
@@ -203,6 +279,7 @@ func logNonSuccess(ctx context.Context, opts Options, req *http.Request, status 
 		slog.Int("status", status),
 		slog.String("method", req.Method),
 		slog.String("path", req.URL.Path),
+		slog.String("origin", origin),
 		slog.Bool("body_truncated", truncated),
 	}
 	if id, ok := gatewayctx.FromContext(ctx); ok && id.RequestID != "" {
@@ -211,7 +288,7 @@ func logNonSuccess(ctx context.Context, opts Options, req *http.Request, status 
 	logger.WarnContext(ctx, "clientx: non-success response", attrs...)
 }
 
-func logOversize(ctx context.Context, opts Options, req *http.Request, status int) {
+func logOversize(ctx context.Context, opts Options, req *http.Request, status int, origin string) {
 	logger := opts.Logger
 	if logger == nil {
 		logger = slog.Default()
@@ -220,6 +297,7 @@ func logOversize(ctx context.Context, opts Options, req *http.Request, status in
 		slog.Int("status", status),
 		slog.String("method", req.Method),
 		slog.String("path", req.URL.Path),
+		slog.String("origin", origin),
 		slog.String("err", ErrResponseTooLarge.Error()),
 	}
 	if id, ok := gatewayctx.FromContext(ctx); ok && id.RequestID != "" {

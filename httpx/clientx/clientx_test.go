@@ -306,6 +306,35 @@ func TestDoJSON_LogsRequestIDFromGatewayContext(t *testing.T) {
 	if got, ok := attrs["body_truncated"].(bool); !ok || got {
 		t.Fatalf("body_truncated attr = %v", attrs["body_truncated"])
 	}
+	if got, ok := attrs["origin"].(string); !ok || got != "upstream_or_gateway" {
+		t.Fatalf("origin attr = %v", attrs["origin"])
+	}
+}
+
+func TestDoJSON_ClassifiesCSARErrorEnvelope(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"code":"auth_failed","message":"invalid token","status":401}`)
+	}))
+	defer srv.Close()
+
+	capture := &capturingHandler{}
+	logger := slog.New(capture)
+	req := newRequest(t, context.Background(), http.MethodPost, srv.URL)
+	_, cerr := clientx.DoJSON[payload](context.Background(), req, clientx.Options{
+		Client: srv.Client(),
+		Logger: logger,
+	})
+	if cerr == nil {
+		t.Fatal("expected error")
+	}
+	if got := clientx.ErrorOrigin(cerr); got != "csar" {
+		t.Fatalf("ErrorOrigin() = %q, want csar", got)
+	}
+	if got := capture.attrMap(0)["origin"]; got != "csar" {
+		t.Fatalf("origin attr = %v", got)
+	}
 }
 
 func TestDoJSON_LogOmitsRequestIDWhenAbsent(t *testing.T) {
