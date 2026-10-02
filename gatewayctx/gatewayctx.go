@@ -29,14 +29,15 @@ import (
 // Trusted header names. The csar gateway strips client-supplied values
 // for these headers and re-injects them from the validated token.
 const (
-	HeaderRequestID   = "X-Request-ID"
-	HeaderSubject     = "X-Gateway-Subject"
-	HeaderTenant      = "X-Gateway-Tenant"
-	HeaderRoles       = "X-Gateway-Roles"        // comma-separated
-	HeaderScopes      = "X-Gateway-Scopes"       // comma-separated
-	HeaderAuthzResult = "X-Gateway-Authz-Result" // e.g. "allow", "deny"
-	HeaderAuthzScope  = "X-Gateway-Authz-Scope"  // comma-separated scope types that granted access: "platform", "tenant"
-	HeaderAuthzPolicy = "X-Gateway-Authz-Policy" // name of the route authz policy (branch) that granted access
+	HeaderRequestID    = "X-Request-ID"
+	HeaderSubject      = "X-Gateway-Subject"
+	HeaderTenant       = "X-Gateway-Tenant"
+	HeaderRoles        = "X-Gateway-Roles"         // comma-separated
+	HeaderScopes       = "X-Gateway-Scopes"        // comma-separated
+	HeaderAuthzResult  = "X-Gateway-Authz-Result"  // e.g. "allow", "deny"
+	HeaderAuthzScope   = "X-Gateway-Authz-Scope"   // comma-separated scope types that granted access: "platform", "tenant"
+	HeaderAuthzPolicy  = "X-Gateway-Authz-Policy"  // name of the route authz policy (branch) that granted access
+	HeaderCredentialID = "X-Gateway-Credential-ID" // authenticated personal API credential ID
 )
 
 // TrustedHeaders lists every identity header a backend may rely on. The
@@ -50,6 +51,7 @@ var TrustedHeaders = []string{
 	HeaderAuthzResult,
 	HeaderAuthzScope,
 	HeaderAuthzPolicy,
+	HeaderCredentialID,
 }
 
 // StripTrusted removes every TrustedHeaders entry from h.
@@ -73,14 +75,15 @@ const HeaderCsarAuthorization = "X-Csar-Authorization"
 
 // Identity holds the request context forwarded by the gateway.
 type Identity struct {
-	RequestID   string
-	Subject     string
-	Tenant      string
-	Roles       []string
-	Scopes      []string
-	AuthzResult string
-	AuthzScopes []string
-	AuthzPolicy string
+	RequestID    string
+	Subject      string
+	Tenant       string
+	Roles        []string
+	Scopes       []string
+	AuthzResult  string
+	AuthzScopes  []string
+	AuthzPolicy  string
+	CredentialID string
 }
 
 // IsPlatformActor reports whether the authz decision was satisfied by a
@@ -109,14 +112,15 @@ type ctxKey struct{}
 // This is a pure parser — it does not verify the request source.
 func FromRequest(r *http.Request) Identity {
 	return Identity{
-		RequestID:   r.Header.Get(HeaderRequestID),
-		Subject:     r.Header.Get(HeaderSubject),
-		Tenant:      r.Header.Get(HeaderTenant),
-		Roles:       splitCSV(r.Header.Get(HeaderRoles)),
-		Scopes:      splitCSV(r.Header.Get(HeaderScopes)),
-		AuthzResult: r.Header.Get(HeaderAuthzResult),
-		AuthzScopes: splitCSV(r.Header.Get(HeaderAuthzScope)),
-		AuthzPolicy: r.Header.Get(HeaderAuthzPolicy),
+		RequestID:    r.Header.Get(HeaderRequestID),
+		Subject:      r.Header.Get(HeaderSubject),
+		Tenant:       r.Header.Get(HeaderTenant),
+		Roles:        splitCSV(r.Header.Get(HeaderRoles)),
+		Scopes:       splitCSV(r.Header.Get(HeaderScopes)),
+		AuthzResult:  r.Header.Get(HeaderAuthzResult),
+		AuthzScopes:  splitCSV(r.Header.Get(HeaderAuthzScope)),
+		AuthzPolicy:  r.Header.Get(HeaderAuthzPolicy),
+		CredentialID: r.Header.Get(HeaderCredentialID),
 	}
 }
 
