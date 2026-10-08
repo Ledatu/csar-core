@@ -136,6 +136,7 @@ func (c *Client) statObjectSDK(ctx context.Context, key, tokenRef string) (stora
 		Bucket:       c.cfg.Bucket,
 		Key:          tokenRef,
 		ETag:         aws.ToString(resp.ETag),
+		VersionID:    aws.ToString(resp.VersionId),
 		Size:         aws.ToInt64(resp.ContentLength),
 		ContentType:  aws.ToString(resp.ContentType),
 		LastModified: lastModified,
@@ -159,7 +160,7 @@ func (c *Client) statObjectIAM(ctx context.Context, key, tokenRef string) (stora
 	}
 	req.Header.Set("X-YaCloud-SubjectToken", token)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := noRedirectClient(c.httpClient).Do(req)
 	if err != nil {
 		return storage.ObjectInfo{}, fmt.Errorf("s3store: head %q HTTP: %w", key, err)
 	}
@@ -195,6 +196,7 @@ func (c *Client) statObjectIAM(ctx context.Context, key, tokenRef string) (stora
 		Bucket:       c.cfg.Bucket,
 		Key:          tokenRef,
 		ETag:         resp.Header.Get("ETag"),
+		VersionID:    resp.Header.Get("x-amz-version-id"),
 		Size:         size,
 		ContentType:  resp.Header.Get("Content-Type"),
 		LastModified: lastModified,

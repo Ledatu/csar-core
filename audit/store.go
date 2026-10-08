@@ -11,6 +11,7 @@ import (
 
 // Event represents a single admin audit log entry.
 type Event struct {
+	// ID identifies one logical emission. Retain it and CreatedAt across retries.
 	ID          string          `json:"id"`
 	Service     string          `json:"service,omitempty"`
 	Actor       string          `json:"actor"`

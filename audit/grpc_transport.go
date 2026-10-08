@@ -93,6 +93,7 @@ func EventsToProto(events []*Event) []*auditv1.AuditEvent {
 // EventToProto converts a single audit event to its protobuf representation.
 func EventToProto(e *Event) *auditv1.AuditEvent {
 	msg := &auditv1.AuditEvent{
+		Id:          e.ID,
 		Service:     e.Service,
 		Actor:       e.Actor,
 		Action:      e.Action,

@@ -29,9 +29,14 @@ Postgres utilities, and secret redaction.
 - Shared inbound/outbound HTTP helpers, including query parsing and capped JSON
   response handling.
 - Audit and notify router clients used by multiple services.
+- `audit.PrepareEvent` owns JSON payloads and establishes a canonical UUID and
+  microsecond timestamp. Retain the prepared event for manual retries; clients
+  prepare each ID-less emission separately. HTTP and protobuf preserve the ID.
 - TLS client/server config generation for mTLS-enabled services.
 
 ## Config And Secrets
+- `authnconfig` supports explicit `oauth.enabled: false` without provider
+  credentials or a state-cookie secret; omitted flags retain enabled validation.
 - Env expansion, secret redaction, and Yandex Cloud auth helpers are core
   cross-service primitives.
 - S3 object access, IAM token refresh, and TLS file handling should be treated
@@ -70,3 +75,31 @@ Postgres utilities, and secret redaction.
 - `golangci-lint run ./...`
 - If `csar-core` changes, rerun downstream build/test in `csar`, `csar-authn`,
   and `csar-authz`
+
+
+## AMQP confirmation contract
+- amqpconfirm.Await requires a dedicated channel with one outstanding mandatory
+  publish and buffered return/confirm listeners registered before publication.
+  Returned, NACKed and closed receipts fail; a returned message wins over its ACK.
+- Audit and the aurumskynet-core wrapper share this primitive. Notify remains
+  unchanged. Release this package before pinning standalone consumers to it.
+
+## Transactional audit and versioned S3 (source only, October 8)
+- `audit.PGOutbox.EnqueueTx` must share the business transaction. Mutation or
+  enqueue failure rolls both back. Exact event identity/content is retained
+  until synchronous router acceptance; a lost receipt may replay the same ID.
+- Relays claim one row using SKIP LOCKED with a 60s fenced lease, 30s send limit
+  and capped retry backoff. A stale worker cannot delete another claim. No
+  unconfirmed send can remove an outbox event. Startup mode is explicit; shared
+  authn/authz configs default `audit_outbox_enabled` to false.
+- `StartRouterRelay` owns transport, cancellation/join and backlog collectors.
+  Observation failures emit scrape-success=0, without pretending backlog is zero.
+- `s3store.PutStream[IfAbsent]`, `StatStreamObject` and `OpenVersion` join validated
+  prefixes, bound IO to 64MiB/30s, return version receipts and enforce pinned
+  reads. Conditional writes permit verification of an existing object on retry;
+  ETag is not a content checksum. IAM requests reject redirects.
+- SDK and IAM paths are tested with local HTTP endpoints. Actual destination
+  versioning, conditional-write support and protected identities remain rollout
+  gates. Legacy 10MiB materialized APIs retain their existing behavior.
+- Read `audit/outbox.go`, `audit/outbox_relay.go`, `s3store/stream.go` and the
+  guarded localhost integration tests before extending these contracts.
