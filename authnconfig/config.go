@@ -36,6 +36,7 @@ type Config struct {
 	STS                    STSConfig                      `yaml:"sts,omitempty"`
 	Authz                  AuthzConfig                    `yaml:"authz,omitempty"`
 	Audit                  stsclient.ServiceAuthConfig    `yaml:"audit,omitempty"`
+	AuditOutboxEnabled     bool                           `yaml:"audit_outbox_enabled"`
 	StorageClient          stsclient.ServiceAuthConfig    `yaml:"storage_client,omitempty"`
 	BotVerify              *BotVerifyConfig               `yaml:"bot_verify,omitempty"`
 	EmailOTP               *EmailOTPConfig                `yaml:"email_otp,omitempty"`
@@ -181,8 +182,14 @@ type JWTConfig struct {
 
 // OAuthConfig configures Goth providers and the state cookie secret.
 type OAuthConfig struct {
+	Enabled       *bool            `yaml:"enabled,omitempty"`
 	SessionSecret string           `yaml:"session_secret"`
 	Providers     []ProviderConfig `yaml:"providers"`
+}
+
+// IsEnabled preserves enabled OAuth for existing configurations that omit the flag.
+func (c OAuthConfig) IsEnabled() bool {
+	return c.Enabled == nil || *c.Enabled
 }
 
 // ProviderConfig defines a single OAuth provider.
@@ -376,8 +383,11 @@ func (c *Config) validate() error {
 	if c.BaseURL == "" {
 		return fmt.Errorf("base_url is required")
 	}
-	if c.OAuth.SessionSecret == "" {
+	if c.OAuth.IsEnabled() && c.OAuth.SessionSecret == "" {
 		return fmt.Errorf("oauth.session_secret is required")
+	}
+	if c.AuditOutboxEnabled && (c.Database.Driver != "postgres" || !c.Audit.IsConfigured()) {
+		return fmt.Errorf("audit_outbox_enabled requires PostgreSQL and configured audit STS transport")
 	}
 	if err := c.Audit.Validate(); err != nil {
 		return err
@@ -385,20 +395,23 @@ func (c *Config) validate() error {
 	if err := c.StorageClient.Validate(); err != nil {
 		return err
 	}
-	if len(c.OAuth.Providers) == 0 {
-		return fmt.Errorf("at least one oauth provider is required")
+	if c.OAuth.IsEnabled() {
+		if len(c.OAuth.Providers) == 0 {
+			return fmt.Errorf("at least one oauth provider is required")
+		}
+		for i, p := range c.OAuth.Providers {
+			if p.Name == "" {
+				return fmt.Errorf("oauth.providers[%d].name is required", i)
+			}
+			if p.ClientID == "" {
+				return fmt.Errorf("oauth.providers[%d].client_id is required", i)
+			}
+			if p.ClientSecret == "" {
+				return fmt.Errorf("oauth.providers[%d].client_secret is required", i)
+			}
+		}
 	}
-	for i, p := range c.OAuth.Providers {
-		if p.Name == "" {
-			return fmt.Errorf("oauth.providers[%d].name is required", i)
-		}
-		if p.ClientID == "" {
-			return fmt.Errorf("oauth.providers[%d].client_id is required", i)
-		}
-		if p.ClientSecret == "" {
-			return fmt.Errorf("oauth.providers[%d].client_secret is required", i)
-		}
-	}
+
 	switch c.JWT.Algorithm {
 	case "RS256", "EdDSA":
 	default:

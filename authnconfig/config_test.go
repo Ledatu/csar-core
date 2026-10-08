@@ -503,3 +503,16 @@ legacy_users_sync:
 		})
 	}
 }
+
+func TestOutboxCannotEnableWithoutAuditTransport(t *testing.T) {
+	_, err := LoadFromBytes([]byte(`base_url: https://auth.example.com
+database:
+  dsn: postgres://test
+oauth:
+  enabled: false
+audit_outbox_enabled: true
+`))
+	if err == nil || !strings.Contains(err.Error(), "audit_outbox_enabled") {
+		t.Fatal("outbox enabled without transport", err)
+	}
+}

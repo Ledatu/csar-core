@@ -142,7 +142,46 @@ err = client.DeleteObject(ctx, "tokens/my-token")
 entries, err := client.ListObjects(ctx)
 ```
 
-Objects are limited to 10 MB.
+The legacy materialized object APIs are limited to 10 MB. Bounded streaming
+APIs support objects up to 64MiB with a 30s operation deadline:
+
+- `PutStream` requires an immutable seekable body and its exact byte size,
+  returning an object/version receipt.
+- `PutStreamIfAbsent` adds `If-None-Match: *`; `ErrObjectExists` permits HEAD
+  through `StatStreamObject`, followed by content verification of that version.
+- `OpenVersion` requires a real version ID and caller-selected byte cap. It
+  rejects providers that return another version or exceed the cap. Close the
+  reader to release its request context.
+
+These APIs join validated prefixes and keys, support existing static/IAM auth
+and reject IAM redirects. Version receipts and ETags are not content integrity
+proof: archive callers must verify complete downloaded bytes themselves. Verify
+the actual store's versioning and conditional-write support before activation.
+
+---
+
+### `audit` — Event identity, router transport and PostgreSQL outbox
+
+`PrepareEvent` owns payloads and establishes a stable UUID/microsecond timestamp.
+Retain that prepared identity across manual retries. `NewRouterClient` provides
+existing asynchronous best-effort delivery; `NewRouterTransport` is synchronous
+and is the transport required for durable outbox acceptance.
+
+`NewPGOutbox(pool, service)` creates a service-scoped relay. Run `Migrate` once
+at startup, then call `EnqueueTx` in the same transaction as the business write.
+An enqueue error must roll back the transaction. `StartRouterRelay` wires the
+configured STS transport, worker and Prometheus backlog collectors, returning
+an idempotent stop/join function. Release it before closing the pool.
+
+Claim tokens fence 60s leases; sends have30s deadlines and failures retain the
+same event for retry. Accepted delivery removes only the pending copy. An
+uncertain receipt can replay an event, so receiving services must preserve IDs
+and deduplicate exact contents. This does not make uncovered producer mutations
+transactional. Authn/authz enablement is startup-only and defaults to false.
+
+Backlog metrics expose count/oldest age and scrape success; a failed DB query
+does not report a false zero. Tests use an isolated localhost PostgreSQL database
+named `csar_audit_test`; never point the integration fixture at production.
 
 ---
 

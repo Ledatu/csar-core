@@ -27,6 +27,7 @@ type Config struct {
 	Policy               PolicyConfig                   `yaml:"policy"`
 	Admin                AdminConfig                    `yaml:"admin"`
 	Audit                stsclient.ServiceAuthConfig    `yaml:"audit,omitempty"`
+	AuditOutboxEnabled   bool                           `yaml:"audit_outbox_enabled"`
 	BootstrapAssignments []BootstrapAssignment          `yaml:"bootstrap_assignments"`
 }
 
@@ -224,6 +225,9 @@ func (c *Config) validate() error {
 		if hasJWKS && hasKey {
 			return fmt.Errorf("authn: specify only one of jwks_url or public_key_file")
 		}
+	}
+	if c.AuditOutboxEnabled && (c.Store.Backend != "postgres" || !c.Audit.IsConfigured()) {
+		return fmt.Errorf("audit_outbox_enabled requires PostgreSQL and configured audit STS transport")
 	}
 	if err := c.Audit.Validate(); err != nil {
 		return err

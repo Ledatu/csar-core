@@ -108,19 +108,23 @@ func (c *Client) Record(_ context.Context, event *Event) {
 	if event == nil {
 		return
 	}
+	prepared, err := PrepareEvent(event)
+	if err != nil {
+		c.log.Warn("audit event rejected", "error", err)
+		return
+	}
 
 	c.mu.Lock()
-	closed := c.closed
-	c.mu.Unlock()
-	if closed {
-		c.logFallback(cloneEvent(event), "client_closed")
+	defer c.mu.Unlock()
+	if c.closed {
+		c.logFallback(prepared, "client_closed")
 		return
 	}
 
 	select {
-	case c.events <- cloneEvent(event):
+	case c.events <- prepared:
 	default:
-		c.logFallback(cloneEvent(event), "buffer_full")
+		c.logFallback(prepared, "buffer_full")
 	}
 }
 
@@ -132,7 +136,11 @@ func (c *Client) RecordSync(ctx context.Context, event *Event) error {
 	if c.cfg.Transport == nil {
 		return errors.New("audit: transport is nil")
 	}
-	return c.cfg.Transport.Send(ctx, []*Event{cloneEvent(event)})
+	prepared, err := PrepareEvent(event)
+	if err != nil {
+		return err
+	}
+	return c.cfg.Transport.Send(ctx, []*Event{prepared})
 }
 
 // Close flushes queued events, stops workers, and closes the transport.
@@ -143,9 +151,8 @@ func (c *Client) Close() error {
 		return c.cfg.Transport.Close()
 	}
 	c.closed = true
-	c.mu.Unlock()
-
 	close(c.events)
+	c.mu.Unlock()
 	c.wg.Wait()
 
 	return c.cfg.Transport.Close()
@@ -263,5 +270,8 @@ func cloneEvent(e *Event) *Event {
 		return nil
 	}
 	cp := *e
+	cp.BeforeState = append(json.RawMessage(nil), e.BeforeState...)
+	cp.AfterState = append(json.RawMessage(nil), e.AfterState...)
+	cp.Metadata = append(json.RawMessage(nil), e.Metadata...)
 	return &cp
 }

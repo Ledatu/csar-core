@@ -15,12 +15,25 @@ func NewRouterClient(cfg *stsclient.ServiceAuthConfig, logger *slog.Logger) (*Cl
 		return nil, nil
 	}
 
+	transport, err := NewRouterTransport(cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewClient(ClientConfig{
+		Transport: transport,
+	}, logger)
+}
+
+// NewRouterTransport supplies synchronous receipts for an outbox relay. It must
+// target upgraded ingest instances whose success means broker-confirmed acceptance.
+func NewRouterTransport(cfg *stsclient.ServiceAuthConfig, logger *slog.Logger) (*HTTPTransport, error) {
+	if cfg == nil || !cfg.IsConfigured() {
+		return nil, fmt.Errorf("audit router transport requires configured STS")
+	}
 	rc, err := stsclient.NewRouterClient(cfg, logger)
 	if err != nil {
 		return nil, fmt.Errorf("audit router client: %w", err)
 	}
-
-	return NewClient(ClientConfig{
-		Transport: NewHTTPTransport(rc.Client, rc.BaseURL),
-	}, logger)
+	return NewHTTPTransport(rc.Client, rc.BaseURL), nil
 }
