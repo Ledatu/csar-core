@@ -103,3 +103,9 @@ Postgres utilities, and secret redaction.
   gates. Legacy 10MiB materialized APIs retain their existing behavior.
 - Read `audit/outbox.go`, `audit/outbox_relay.go`, `s3store/stream.go` and the
   guarded localhost integration tests before extending these contracts.
+
+## Legacy sync session endpoint
+`legacy_users_sync.lock_database_dsn` is startup-only and required for enabled
+PostgreSQL apply. It must select session pooling or direct PostgreSQL; normal
+transaction-pooled requests remain independent. This is authn-specific schema,
+not a new shared locking primitive. Dry-run does not need this endpoint.
