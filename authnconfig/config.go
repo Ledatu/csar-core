@@ -113,6 +113,8 @@ const (
 // LegacyUsersSyncConfig gates the service endpoint that reconciles legacy
 // Mongo user identities into authn users and provider links.
 type LegacyUsersSyncConfig struct {
+	// LockDatabaseDSN must use a session pool or a direct PostgreSQL connection.
+	LockDatabaseDSN string   `yaml:"lock_database_dsn,omitempty"`
 	Enabled         bool     `yaml:"enabled"`
 	AllowedSubjects []string `yaml:"allowed_subjects,omitempty"`
 	MaxUsers        int      `yaml:"max_users,omitempty"`
@@ -455,6 +457,9 @@ func (c *Config) validate() error {
 	}
 	if err := c.LegacyUsersSync.validate(); err != nil {
 		return err
+	}
+	if c.Database.Driver == "postgres" && c.LegacyUsersSync.Enabled && c.LegacyUsersSync.Apply.Enabled && strings.TrimSpace(c.LegacyUsersSync.LockDatabaseDSN) == "" {
+		return fmt.Errorf("legacy_users_sync.lock_database_dsn is required for PostgreSQL apply (session pooling or direct connection)")
 	}
 	if err := c.EmailOTP.validate(); err != nil {
 		return err

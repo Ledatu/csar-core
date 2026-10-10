@@ -434,9 +434,11 @@ legacy_users_sync:
 }
 
 func TestLoadFromBytes_LegacyUsersSyncApply(t *testing.T) {
+	t.Setenv("TEST_LEGACY_SYNC_LOCK_DSN", "postgres://test@localhost/csar_authn_session")
 	cfg, err := LoadFromBytes([]byte(legacyUsersSyncBaseYAML + `
 legacy_users_sync:
   enabled: true
+  lock_database_dsn: "${TEST_LEGACY_SYNC_LOCK_DSN}"
   allowed_subjects: ["svc:legacy-identity-sync"]
   apply:
     enabled: true
@@ -445,6 +447,9 @@ legacy_users_sync:
 `))
 	if err != nil {
 		t.Fatalf("LoadFromBytes() error = %v", err)
+	}
+	if cfg.LegacyUsersSync.LockDatabaseDSN != "postgres://test@localhost/csar_authn_session" {
+		t.Fatal("lock DSN was not expanded")
 	}
 	got := cfg.LegacyUsersSync.Apply
 	if !got.Enabled || len(got.Actions) != 1 || got.Actions[0] != LegacyUsersSyncActionLink || got.MaxLinks != 30 || got.MaxCreates != DefaultLegacyUsersSyncMaxCreates {
@@ -514,5 +519,19 @@ audit_outbox_enabled: true
 `))
 	if err == nil || !strings.Contains(err.Error(), "audit_outbox_enabled") {
 		t.Fatal("outbox enabled without transport", err)
+	}
+}
+
+func TestLegacyUsersSyncApplyRequiresSessionDSN(t *testing.T) {
+	_, err := LoadFromBytes([]byte(legacyUsersSyncBaseYAML + `
+legacy_users_sync:
+  enabled: true
+  allowed_subjects: ["svc:legacy-identity-sync"]
+  apply:
+    enabled: true
+    actions: ["link"]
+`))
+	if err == nil || !strings.Contains(err.Error(), "legacy_users_sync.lock_database_dsn is required") {
+		t.Fatalf("missing session DSN: %v", err)
 	}
 }
