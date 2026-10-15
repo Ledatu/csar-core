@@ -126,3 +126,15 @@ not a new shared locking primitive. Dry-run does not need this endpoint.
   Legacy and explicit Postbox endpoints both require HTTPS without credentials,
   query or fragment and are validated during config load.
   Notify email and local/direct-MX mail delivery are not enabled by this change.
+
+## Bounded HTTP error diagnostics (October 16, 2026)
+- `audit/http_response.go` owns version 1 `metadata.http_response`, JSON diagnostic
+  allowlist, mandatory redaction, 64 KiB inspection/4 KiB body budgets and explicit
+  omission/truncation states. No raw incomplete/HTML/text fallback is stored.
+- Producers capture only final errors on opt-in routes and supply known secrets;
+  `jsonredact.RedactText` masks reflected credentials, cookies, URL credentials,
+  JWTs and email addresses. It is not a universal PII classifier.
+- `audit.EncodeHTTPMetadata` keeps the existing 16 KiB ingest budget, preserving
+  status/provenance while dropping optional body/query. Wire and DB unchanged.
+- Publish this library before pinning router/coordinator consumers. New capture
+  policy remains off until compatible binaries are deployed; old events stay valid.
