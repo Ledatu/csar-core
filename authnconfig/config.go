@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ledatu/csar-core/configutil"
+	"github.com/ledatu/csar-core/email"
 	"github.com/ledatu/csar-core/postbox"
 	"github.com/ledatu/csar-core/stsclient"
 )
@@ -87,10 +88,21 @@ type EmailOTPConfig struct {
 	SenderName         string        `yaml:"sender_name,omitempty"`
 	Subject            string        `yaml:"subject"`
 	Postbox            PostboxConfig `yaml:"postbox"`
+	Delivery           *email.Config `yaml:"delivery,omitempty"`
 }
 
 // PostboxConfig controls outbound mail delivery through Yandex Cloud Postbox.
 type PostboxConfig = postbox.Config
+
+// EmailDelivery returns a copy of the effective delivery config. Omitting
+// delivery preserves legacy Postbox selection; Postbox endpoints must use HTTPS.
+func (c *EmailOTPConfig) EmailDelivery() email.Config {
+	if c.Delivery != nil {
+		return *c.Delivery
+	}
+	pb := c.Postbox
+	return email.Config{Provider: email.ProviderPostbox, Postbox: &pb}
+}
 
 // LegacyLoginConfig controls temporary migration-only login bridges.
 type LegacyLoginConfig struct {
@@ -344,7 +356,11 @@ func LoadFromBytes(data []byte) (*Config, error) {
 		if cfg.EmailOTP.Subject == "" {
 			cfg.EmailOTP.Subject = "Your AURUMSKYNET sign-in code"
 		}
-		cfg.EmailOTP.Postbox.ApplyDefaults()
+		if cfg.EmailOTP.Delivery == nil {
+			cfg.EmailOTP.Postbox.ApplyDefaults()
+		} else {
+			cfg.EmailOTP.Delivery.ApplyDefaults()
+		}
 	}
 	if cfg.Passkeys.ChallengeTTL.Duration == 0 {
 		cfg.Passkeys.ChallengeTTL = NewDuration(5 * time.Minute)
@@ -541,11 +557,11 @@ func (c *EmailOTPConfig) validate() error {
 	if c.Subject == "" {
 		return fmt.Errorf("email_otp.subject is required when enabled")
 	}
-	if c.Postbox.Endpoint == "" {
-		return fmt.Errorf("email_otp.postbox.endpoint is required when enabled")
+	if c.Delivery != nil {
+		if c.Postbox.Endpoint != "" || c.Postbox.Region != "" || c.Postbox.Auth.AuthMode != "" || c.Postbox.Auth.SAKeyFile != "" || !c.Postbox.Auth.IAMToken.IsEmpty() || !c.Postbox.Auth.OAuthToken.IsEmpty() || !c.Postbox.Auth.AccessKeyID.IsEmpty() || !c.Postbox.Auth.SecretAccessKey.IsEmpty() {
+			return fmt.Errorf("email_otp.postbox and email_otp.delivery cannot both be configured")
+		}
+		return c.Delivery.Validate("email_otp.delivery")
 	}
-	if c.Postbox.Region == "" {
-		return fmt.Errorf("email_otp.postbox.region is required when enabled")
-	}
-	return c.Postbox.Validate("email_otp.postbox")
+	return c.EmailDelivery().Validate("email_otp")
 }

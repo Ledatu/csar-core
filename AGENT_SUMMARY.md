@@ -109,3 +109,20 @@ Postgres utilities, and secret redaction.
 PostgreSQL apply. It must select session pooling or direct PostgreSQL; normal
 transaction-pooled requests remain independent. This is authn-specific schema,
 not a new shared locking primitive. Dry-run does not need this endpoint.
+
+## Email delivery portability (source only, October 11, 2026)
+- `email` is the shared transport boundary for Postbox HTTP and Selectel SMTP.
+  It owns one-recipient message validation, MIME rendering, verified implicit
+  TLS/STARTTLS and bounded AUTH LOGIN submission. Selectel defaults are
+  smtp.mail.selcloud.ru:1127 (TLS), or 1126 for STARTTLS; timeout defaults to 10s.
+- `email.SendError` distinguishes rejected, retryable and unknown acceptance.
+  No transport automatically retries. SMTP receipt success means DATA accepted;
+  QUIT failure does not invalidate it. SMTPUTF8 envelope addresses are currently
+  unsupported; Unicode display names, subjects and UTF-8 bodies are supported.
+- Postbox preserves SendEmail and adds SendEmailWithReceipt. Authenticated HTTP
+  redirects are rejected and provider reply bodies are excluded from errors.
+- `authnconfig.EmailOTPConfig.Delivery` selects an explicit transport; omission
+  preserves legacy Postbox configuration. Mixed legacy/new settings fail validation.
+  Legacy and explicit Postbox endpoints both require HTTPS without credentials,
+  query or fragment and are validated during config load.
+  Notify email and local/direct-MX mail delivery are not enabled by this change.

@@ -3,8 +3,10 @@ package postbox
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/ledatu/csar-core/ycloud"
@@ -110,4 +112,63 @@ func TestConfigValidateRequiresAuthMode(t *testing.T) {
 
 func authConfigForTest(mode string) ycloud.AuthConfig {
 	return ycloud.AuthConfig{AuthMode: mode}
+}
+
+func TestPostboxReceiptAndSafeErrors(t *testing.T) {
+	for _, tt := range []struct {
+		status             int
+		body               string
+		unknown, retryable bool
+	}{
+		{200, `{"MessageId":"provider-id"}`, false, false},
+		{200, `malformed receipt`, false, false},
+		{429, `secret-token recipient@example.com 123456`, false, true},
+		{403, `secret-token recipient@example.com 123456`, false, false},
+		{500, `secret-token recipient@example.com 123456`, true, false},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(tt.status)
+			_, _ = w.Write([]byte(tt.body))
+		}))
+		client := NewClientWithResolver(&Config{Endpoint: srv.URL}, srv.Client(), fakeTokenResolver{token: "secret-token"})
+		id, err := client.SendEmailWithReceipt(context.Background(), &Message{FromEmailAddress: "sender@example.com", ToAddresses: []string{"recipient@example.com"}, Subject: "code", TextBody: "123456"})
+		srv.Close()
+		if tt.status == 200 {
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(tt.body, "provider-id") && id != "provider-id" {
+				t.Fatal("receipt lost")
+			}
+			continue
+		}
+		var sendErr *SendError
+		if !errors.As(err, &sendErr) || sendErr.Unknown != tt.unknown || sendErr.Retryable != tt.retryable {
+			t.Fatalf("unexpected classification: %v", err)
+		}
+		if strings.Contains(err.Error(), "123456") || strings.Contains(err.Error(), "secret-token") || strings.Contains(err.Error(), "recipient@example.com") {
+			t.Fatal("provider response leaked")
+		}
+	}
+}
+
+func TestPostboxDoesNotFollowRedirects(t *testing.T) {
+	forwarded := false
+	destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { forwarded = true; w.WriteHeader(http.StatusOK) }))
+	defer destination.Close()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, destination.URL, http.StatusTemporaryRedirect)
+	}))
+	defer srv.Close()
+	supplied := srv.Client()
+	client := NewClientWithResolver(&Config{Endpoint: srv.URL}, supplied, fakeTokenResolver{token: "secret-token"})
+	if err := client.SendEmail(context.Background(), &Message{}); err == nil {
+		t.Fatal("redirect accepted")
+	}
+	if forwarded {
+		t.Fatal("authenticated email request followed redirect")
+	}
+	if supplied.CheckRedirect != nil {
+		t.Fatal("mutated caller-owned HTTP client")
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -82,6 +83,34 @@ type TokenResolver interface {
 	ResolveToken(ctx context.Context) (string, error)
 }
 
+// SendError exposes safe status and acceptance information without provider
+// response bodies, which can contain recipient data or message contents.
+type SendError struct {
+	Stage      string
+	StatusCode int
+	Unknown    bool
+	Retryable  bool
+	cause      error
+}
+
+func (e *SendError) Error() string {
+	return fmt.Sprintf("postbox send failed: stage=%s HTTP=%d", e.Stage, e.StatusCode)
+}
+
+func (e *SendError) Unwrap() error { return e.cause }
+
+func protectedClient(client *http.Client) *http.Client {
+	if client == nil {
+		client = &http.Client{}
+	}
+	clone := *client
+	if clone.Timeout == 0 {
+		clone.Timeout = 10 * time.Second
+	}
+	clone.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	return &clone
+}
+
 // Client sends email through the Yandex Cloud Postbox HTTP API.
 type Client struct {
 	endpoint     string
@@ -92,9 +121,7 @@ type Client struct {
 // NewClient creates a Postbox client using the shared Yandex Cloud IAM resolver.
 func NewClient(cfg *Config, client *http.Client) (*Client, error) {
 	cfg.ApplyDefaults()
-	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
-	}
+	client = protectedClient(client)
 	resolver, err := ycloud.NewIAMTokenResolver(&cfg.Auth, client)
 	if err != nil {
 		return nil, fmt.Errorf("initializing postbox IAM resolver: %w", err)
@@ -105,9 +132,7 @@ func NewClient(cfg *Config, client *http.Client) (*Client, error) {
 // NewClientWithResolver creates a client with an explicit token resolver for tests.
 func NewClientWithResolver(cfg *Config, client *http.Client, resolver TokenResolver) *Client {
 	cfg.ApplyDefaults()
-	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
-	}
+	client = protectedClient(client)
 	return &Client{
 		endpoint:     strings.TrimRight(cfg.Endpoint, "/"),
 		client:       client,
@@ -115,33 +140,53 @@ func NewClientWithResolver(cfg *Config, client *http.Client, resolver TokenResol
 	}
 }
 
-// SendEmail sends a plain Postbox message.
+// SendEmail sends a plain Postbox message, preserving the original API.
 func (c *Client) SendEmail(ctx context.Context, msg *Message) error {
+	_, err := c.SendEmailWithReceipt(ctx, msg)
+	return err
+}
+
+// SendEmailWithReceipt returns the provider's message ID when supplied. Success
+// means acceptance by Postbox, not final delivery to the recipient.
+func (c *Client) SendEmailWithReceipt(ctx context.Context, msg *Message) (string, error) {
+	if msg == nil {
+		return "", &SendError{Stage: "validate"}
+	}
 	token, err := c.tokenResolve.ResolveToken(ctx)
 	if err != nil {
-		return fmt.Errorf("resolving postbox IAM token: %w", err)
+		return "", &SendError{Stage: "authentication", Retryable: true, cause: err}
 	}
 	body, err := json.Marshal(toSendEmailRequest(msg))
 	if err != nil {
-		return fmt.Errorf("building postbox email request: %w", err)
+		return "", &SendError{Stage: "encode", cause: err}
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint+"/v2/email/outbound-emails", bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("building postbox HTTP request: %w", err)
+		return "", &SendError{Stage: "request", cause: err}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-YaCloud-SubjectToken", token)
-
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("sending postbox email: %w", err)
+		return "", &SendError{Stage: "send", Unknown: true, cause: err}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return fmt.Errorf("postbox send failed: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+		// Server errors do not prove that no message was accepted before the failure.
+		return "", &SendError{Stage: "response", StatusCode: resp.StatusCode, Unknown: resp.StatusCode >= 500, Retryable: resp.StatusCode == http.StatusTooManyRequests}
 	}
-	return nil
+	var receipt struct {
+		MessageID string `json:"MessageId"`
+	}
+	if err = json.NewDecoder(io.LimitReader(resp.Body, 64*1024)).Decode(&receipt); err != nil && !errors.Is(err, io.EOF) {
+		// The HTTP response already confirmed acceptance. A missing or unreadable
+		// optional receipt must not turn that into a retryable send failure.
+		return "", nil
+	}
+	if len(receipt.MessageID) > 254 || strings.ContainsAny(receipt.MessageID, "\r\n\x00") {
+		return "", nil
+	}
+	return receipt.MessageID, nil
 }
 
 func toSendEmailRequest(msg *Message) sendEmailRequest {
