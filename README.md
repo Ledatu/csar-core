@@ -183,6 +183,24 @@ Backlog metrics expose count/oldest age and scrape success; a failed DB query
 does not report a false zero. Tests use an isolated localhost PostgreSQL database
 named `csar_audit_test`; never point the integration fixture at production.
 
+`CaptureHTTPResponse` produces version 1 `metadata.http_response` diagnostics
+for a final HTTP error. Producers must bound inspection to 64 KiB and pass known
+credential values. Only complete JSON error envelopes are eligible: a fixed
+allowlist selects code/message/error fields, built-in and route redaction remove
+sensitive keys, and `jsonredact.RedactText` masks common credentials and email
+addresses in retained strings. Arbitrary payload fields, HTML, invalid/partial
+JSON and unsupported encodings are omitted with a reason; there is no raw-prefix
+fallback. This is bounded diagnostic collection, not a general PII classifier.
+
+The stored body is escaped text, capped at 4 KiB (UTF-8 safe); `truncated` describes
+that stored fragment. `observed_bytes` and `capture_complete` describe producer
+observation separately. `origin` remains unknown unless the producer proves a
+local failure. Successful responses are outside this contract's capture policy.
+`EncodeHTTPMetadata` applies the existing 16 KiB event metadata budget, removing
+optional response body/query before preserving status and response provenance.
+No audit ingest protobuf or database migration is required. Enable capture only
+on reviewed route families after all config readers support the policy.
+
 ---
 
 ### `ycloud` — Yandex Cloud IAM token resolver
