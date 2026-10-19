@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -34,7 +36,16 @@ type Server struct {
 	tlsCfg          *tlsx.ServerConfig
 	shutdownTimeout time.Duration
 	logger          *slog.Logger
+	state           atomic.Uint32
 }
+
+const (
+	stateIdle uint32 = iota
+	stateStarting
+	stateServing
+	stateDraining
+	stateStopped
+)
 
 // New creates a Server. It builds the TLS config eagerly (if configured)
 // so cert errors are caught before the first request.
@@ -70,17 +81,60 @@ func New(cfg *Config, logger *slog.Logger) (*Server, error) {
 // When TLS is configured, the certificates are already loaded into the
 // tls.Config by New, so no file paths are needed here.
 func (s *Server) ListenAndServe() error {
+	if !s.state.CompareAndSwap(stateIdle, stateStarting) {
+		return http.ErrServerClosed
+	}
+	ln, err := net.Listen("tcp", s.srv.Addr)
+	if err != nil {
+		s.state.Store(stateStopped)
+		return err
+	}
+	return s.serve(ln)
+}
+
+// Serve serves an already-bound listener and closes it on return. A Server is
+// single-use, including after a failed bind or a shutdown before startup.
+func (s *Server) Serve(ln net.Listener) error {
+	if !s.state.CompareAndSwap(stateIdle, stateStarting) {
+		_ = ln.Close()
+		return http.ErrServerClosed
+	}
+	return s.serve(ln)
+}
+
+func (s *Server) serve(ln net.Listener) error {
+	defer s.state.Store(stateStopped)
+	tracked := &servingListener{Listener: ln, state: &s.state}
 	if s.tlsCfg != nil {
 		s.logger.Info("starting HTTPS server", "addr", s.srv.Addr)
-		return s.srv.ListenAndServeTLS("", "")
+		return s.srv.ServeTLS(tracked, "", "")
 	}
 	s.logger.Info("starting HTTP server", "addr", s.srv.Addr)
-	return s.srv.ListenAndServe()
+	return s.srv.Serve(tracked)
+}
+
+// IsServing reports listener lifecycle only, without making a connection to
+// the application. It does not validate TLS or an end-to-end HTTP response.
+func (s *Server) IsServing() bool {
+	return s.state.Load() == stateServing
+}
+
+type servingListener struct {
+	net.Listener
+	state *atomic.Uint32
+}
+
+func (ln *servingListener) Accept() (net.Conn, error) {
+	// Serve has registered the listener and reached its accept loop. A shutdown
+	// racing with the first Accept must never make the server ready again.
+	ln.state.CompareAndSwap(stateStarting, stateServing)
+	return ln.Listener.Accept()
 }
 
 // Shutdown gracefully drains connections. The provided context controls
 // the deadline; if nil, the configured ShutdownTimeout is used.
 func (s *Server) Shutdown(ctx context.Context) error {
+	s.state.Store(stateDraining)
 	s.logger.Info("shutting down server")
 	if ctx == nil {
 		var cancel context.CancelFunc
@@ -122,7 +176,7 @@ func (s *Server) Run(ctx context.Context) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), s.shutdownTimeout)
 	defer cancel()
 
-	if err := s.srv.Shutdown(shutdownCtx); err != nil {
+	if err := s.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("graceful shutdown failed: %w", err)
 	}
 
