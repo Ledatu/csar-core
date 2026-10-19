@@ -138,3 +138,11 @@ not a new shared locking primitive. Dry-run does not need this endpoint.
   status/provenance while dropping optional body/query. Wire and DB unchanged.
 - Publish this library before pinning router/coordinator consumers. New capture
   policy remains off until compatible binaries are deployed; old events stay valid.
+
+## HTTP listener lifecycle
+
+`httpserver.Server.IsServing()` reports an active accept loop without probing the
+listener. It is false before startup, on bind/serve failure, during shutdown and
+after exit. `Serve(listener)` supports pre-bound listeners; servers are single-use.
+This replaces TCP self-probes of TLS listeners in downstream health checks. It
+does not claim certificate, authenticated HTTP or workload validation.
