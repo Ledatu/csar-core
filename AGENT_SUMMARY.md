@@ -146,3 +146,11 @@ listener. It is false before startup, on bind/serve failure, during shutdown and
 after exit. `Serve(listener)` supports pre-bound listeners; servers are single-use.
 This replaces TCP self-probes of TLS listeners in downstream health checks. It
 does not claim certificate, authenticated HTTP or workload validation.
+
+## Local read reuse (source only, October 23)
+- `readcache.Group[T]` owns bounded in-flight admission, follower release and
+  ticket completion. CSAR's HTTP cache consumes it; HTTP policy stays in CSAR.
+- `readcache.Scope` owns bounded operation-local byte memoization with explicit
+  Close and maximum age. Failed loads are not retained; values are copied.
+- This is not Redis/distributed coalescing, a freshness policy or seller quota.
+  See `readcache/README.md`. Release before pinning downstream consumers.
