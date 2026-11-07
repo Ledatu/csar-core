@@ -32,6 +32,15 @@ type retryBudget struct {
 	last   time.Time
 }
 
+type noRouterRetryKey struct{}
+
+// WithoutRouterRetry disables this package's automatic router retries for a
+// request. Use it for upstream operations with side effects even when their
+// HTTP method is GET. It does not make ambiguous upstream outcomes idempotent.
+func WithoutRouterRetry(ctx context.Context) context.Context {
+	return context.WithValue(ctx, noRouterRetryKey{}, true)
+}
+
 func newRetryTransport(base http.RoundTripper, logger *slog.Logger) http.RoundTripper {
 	if base == nil {
 		base = http.DefaultTransport
@@ -84,6 +93,9 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func isRetryableRequest(req *http.Request) bool {
+	if disabled, _ := req.Context().Value(noRouterRetryKey{}).(bool); disabled {
+		return false
+	}
 	switch req.Method {
 	case http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace:
 		return true
