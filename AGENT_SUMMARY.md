@@ -154,3 +154,11 @@ does not claim certificate, authenticated HTTP or workload validation.
   Close and maximum age. Failed loads are not retained; values are copied.
 - This is not Redis/distributed coalescing, a freshness policy or seller quota.
   See `readcache/README.md`. Release before pinning downstream consumers.
+
+
+## Per-request router retry control (2026-11-07)
+
+`stsclient.WithoutRouterRetry(ctx)` opts a request out of the shared router retry
+transport. Finance uses it for WB task-create GET, which has upstream side effects.
+Ordinary reads keep the existing retry budget. The marker survives request clones;
+it does not guarantee upstream idempotency or suppress retries outside this package.

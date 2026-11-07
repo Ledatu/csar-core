@@ -252,3 +252,9 @@ Implements `fmt.Stringer`, `fmt.GoStringer`, `slog.LogValuer`, and `encoding.Tex
 ## License
 
 MIT
+
+
+For upstream operations with side effects even when the method is GET, construct
+the request using `stsclient.WithoutRouterRetry(ctx)`. This suppresses this SDK's
+automatic router retry attempts; gateway retry policy and ambiguous outcomes still
+require explicit handling by the caller.
