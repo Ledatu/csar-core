@@ -1,3 +1,14 @@
+## Bounded HTTP retries and native pool readiness (November 14)
+
+`httpx/retryafter` centralizes bounded delta-seconds/HTTP-date parsing previously
+private to tokenmint. clientx.Error exposes only a sanitized RetryAfter duration,
+including consistent CSAR retry_after_ms envelopes, capped at24h. It preserves
+credential-plane origin without exposing headers/body in error strings or logs.
+Tokenmint reuses the parser and retains its own profile backoff bounds.
+`pgutil.PoolReadiness` supplies a bounded, redacted required-dependency check for
+module-owned native pools. These primitives do not execute retries or activate a
+service. See the OZ08 owner for durable cabinet cooldown policy.
+
 # csar-core Agent Summary
 
 ## Role In Prod

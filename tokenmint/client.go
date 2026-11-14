@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ledatu/csar-core/httpx/retryafter"
+
 	"github.com/ledatu/csar-core/httpx/clientx"
 )
 
@@ -205,7 +207,7 @@ func buildGrantRequest(ctx context.Context, p *Profile, clientID, clientSecret s
 
 // classifyFailure decides whether a non-2xx response is worth retrying soon.
 func classifyFailure(resp *http.Response, body []byte) error {
-	retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
+	retryAfter := retryafter.Parse(resp.Header.Get("Retry-After"), time.Now(), retryafter.MaxDelay)
 
 	// The body of a failed token request routinely echoes the submitted
 	// parameters, so it is summarized to an error code and never carried
@@ -248,21 +250,6 @@ func extractErrorCode(body []byte) string {
 		return probe.Error
 	}
 	return "unspecified"
-}
-
-func parseRetryAfter(v string) time.Duration {
-	if v == "" {
-		return 0
-	}
-	if secs, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && secs > 0 {
-		return time.Duration(secs) * time.Second
-	}
-	if t, err := http.ParseTime(v); err == nil {
-		if d := time.Until(t); d > 0 {
-			return d
-		}
-	}
-	return 0
 }
 
 func parseGrantResponse(p *Profile, body []byte) (grantResponse, error) {
