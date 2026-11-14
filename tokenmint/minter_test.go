@@ -221,8 +221,8 @@ func TestMintHonorsRetryAfterOn429(t *testing.T) {
 	defer srv.Close()
 
 	m := newMinter(t, testConfig(t, srv.URL, nil))
-	if _, err := m.Mint(context.Background(), "test", "cid", "sec"); !errors.Is(err, tokenmint.ErrUpstream) {
-		t.Fatalf("err = %v, want ErrUpstream", err)
+	if _, err := m.Mint(context.Background(), "test", "cid", "sec"); !errors.Is(err, tokenmint.ErrUpstream) || !errors.Is(err, tokenmint.ErrThrottled) {
+		t.Fatalf("err = %v, want both ErrUpstream and ErrThrottled", err)
 	}
 	_, err := m.Mint(context.Background(), "test", "cid", "sec")
 	if !errors.Is(err, tokenmint.ErrBackoff) {

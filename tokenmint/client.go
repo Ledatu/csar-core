@@ -58,6 +58,11 @@ func (e *upstreamError) Error() string {
 
 func (e *upstreamError) Unwrap() error { return ErrUpstream }
 
+// A provider 429 retains the transient error contract and exposes its quota class.
+func (e *upstreamError) Is(target error) bool {
+	return target == ErrThrottled && e.status == http.StatusTooManyRequests
+}
+
 // newHTTPClient builds the outbound client used for every grant.
 //
 // The hardening here is not incidental. This client carries a long-lived
