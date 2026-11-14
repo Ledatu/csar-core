@@ -258,3 +258,13 @@ For upstream operations with side effects even when the method is GET, construct
 the request using `stsclient.WithoutRouterRetry(ctx)`. This suppresses this SDK's
 automatic router retry attempts; gateway retry policy and ambiguous outcomes still
 require explicit handling by the caller.
+
+### Credential resolution failures
+
+The trusted router returns safe `apierror.Response` HTTP 502 bodies with one of
+`credential_invalid`, `credential_throttled`, `credential_unavailable`,
+`credential_malformed`, or `credential_configuration`. `CredentialFailureCode`
+accepts only this bounded allowlist and ignores message/detail content. These
+codes describe credential resolution before the upstream API request; ordinary
+marketplace HTTP statuses retain their own meaning. Provider 429 mint errors also
+match `tokenmint.ErrThrottled` without losing `ErrUpstream` or Retry-After behavior.

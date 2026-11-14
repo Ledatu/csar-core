@@ -10,18 +10,41 @@ import (
 
 // Standard error codes returned by CSAR.
 const (
-	CodeRouteNotFound     = "route_not_found"
-	CodeAccessDenied      = "access_denied"
-	CodeAuthFailed        = "auth_failed"
-	CodeThrottled         = "throttled"
-	CodeCircuitOpen       = "circuit_open"
-	CodeBackpressure      = "backpressure"
-	CodeUpstreamError     = "upstream_error"
-	CodeNoHealthyUpstream = "no_healthy_upstream"
-	CodeTenantNotFound    = "tenant_not_found"
-	CodeResponseTooLarge  = "response_too_large"
-	CodeSecurityError     = "security_error"
+	CodeRouteNotFound           = "route_not_found"
+	CodeAccessDenied            = "access_denied"
+	CodeAuthFailed              = "auth_failed"
+	CodeThrottled               = "throttled"
+	CodeCircuitOpen             = "circuit_open"
+	CodeBackpressure            = "backpressure"
+	CodeUpstreamError           = "upstream_error"
+	CodeNoHealthyUpstream       = "no_healthy_upstream"
+	CodeTenantNotFound          = "tenant_not_found"
+	CodeResponseTooLarge        = "response_too_large"
+	CodeSecurityError           = "security_error"
+	CodeCredentialInvalid       = "credential_invalid"
+	CodeCredentialThrottled     = "credential_throttled"
+	CodeCredentialUnavailable   = "credential_unavailable"
+	CodeCredentialMalformed     = "credential_malformed"
+	CodeCredentialConfiguration = "credential_configuration"
 )
+
+// CredentialFailureCode accepts only the bounded CSAR credential-plane contract.
+// Messages/details are deliberately not returned to downstream services.
+func CredentialFailureCode(body []byte) string {
+	if len(body) > 4096 {
+		return ""
+	}
+	var response Response
+	if json.Unmarshal(body, &response) != nil || response.Status != http.StatusBadGateway {
+		return ""
+	}
+	switch response.Code {
+	case CodeCredentialInvalid, CodeCredentialThrottled, CodeCredentialUnavailable, CodeCredentialMalformed, CodeCredentialConfiguration:
+		return response.Code
+	default:
+		return ""
+	}
+}
 
 // Response is the standard JSON error body for all CSAR error responses.
 type Response struct {

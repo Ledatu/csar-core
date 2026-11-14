@@ -162,3 +162,11 @@ does not claim certificate, authenticated HTTP or workload validation.
 transport. Finance uses it for WB task-create GET, which has upstream side effects.
 Ordinary reads keep the existing retry budget. The marker survives request clones;
 it does not guarantee upstream idempotency or suppress retries outside this package.
+
+## Credential failure contract (November 14)
+
+`apierror` publishes bounded allowlisted credential-plane failure codes for the
+router's fail-closed HTTP 502 responses. Downstream verifiers may classify these
+codes; they must not forward provider messages, references or credentials.
+`tokenmint` provider 429 errors satisfy both ErrUpstream (existing transient retry
+semantics) and ErrThrottled (quota classification). No new retry policy is added.
