@@ -57,7 +57,13 @@ type Error struct {
 	// RetryAfter is a sanitized remote hint, capped at retryafter.MaxDelay.
 	// It carries no response headers or sensitive error details.
 	RetryAfter time.Duration
-	Err        error
+	// CSARStatus and CSARWait preserve only sanitized router protocol signals.
+	CSARStatus string
+	CSARWait   time.Duration
+	// RetryAfterHeader is kept separately so protocol-aware callers can honor
+	// header precedence while legacy RetryAfter retains its conservative maximum.
+	RetryAfterHeader time.Duration
+	Err              error
 }
 
 // Error implements the error interface. When Status is non-zero callers see
@@ -150,6 +156,7 @@ func exec(ctx context.Context, req *http.Request, opts Options) ([]byte, int, *E
 	}()
 
 	hint := retryafter.Parse(resp.Header.Get("Retry-After"), time.Now(), retryafter.MaxDelay)
+	routerStatus, routerWait := routerHints(resp.Header)
 	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if readErr != nil {
 		return nil, resp.StatusCode, &Error{
@@ -158,7 +165,8 @@ func exec(ctx context.Context, req *http.Request, opts Options) ([]byte, int, *E
 			Path:       req.URL.Path,
 			Origin:     classifyResponseOrigin(nil, resp.Header),
 			RetryAfter: hint,
-			Err:        fmt.Errorf("clientx: read body: %w", readErr),
+			CSARStatus: routerStatus, CSARWait: routerWait, RetryAfterHeader: hint,
+			Err: fmt.Errorf("clientx: read body: %w", readErr),
 		}
 	}
 
@@ -172,7 +180,8 @@ func exec(ctx context.Context, req *http.Request, opts Options) ([]byte, int, *E
 			Body:       nil,
 			Origin:     origin,
 			RetryAfter: hint,
-			Err:        ErrResponseTooLarge,
+			CSARStatus: routerStatus, CSARWait: routerWait, RetryAfterHeader: hint,
+			Err: ErrResponseTooLarge,
 		}
 	}
 
@@ -187,6 +196,7 @@ func exec(ctx context.Context, req *http.Request, opts Options) ([]byte, int, *E
 			Body:       capped,
 			Origin:     origin,
 			RetryAfter: responseRetryAfter(hint, raw, origin, resp.StatusCode),
+			CSARStatus: routerStatus, CSARWait: routerWait, RetryAfterHeader: hint,
 		}
 	}
 

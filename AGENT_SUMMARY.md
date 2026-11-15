@@ -181,3 +181,14 @@ router's fail-closed HTTP 502 responses. Downstream verifiers may classify these
 codes; they must not forward provider messages, references or credentials.
 `tokenmint` provider 429 errors satisfy both ErrUpstream (existing transient retry
 semantics) and ErrThrottled (quota classification). No new retry policy is added.
+# Universal CSAR client prerequisites (November 15; source only)
+
+csarclient wraps existing STS RouterClient/clientx for bounded relative-route JSON,
+redirect/identity-header rejection and single-attempt worker calls. Protocol hints
+are typed and bounded; optional short waits require explicit replay safety.
+clientx keeps legacy conservative hints while exposing canonical header priority.
+pgutil reader options centralize read-only session/default, min0 and server SQL
+timeout setup. Existing pool defaults remain compatible. See csarclient/README.md.
+No marketplace-specific transport, external credentials, deployed configuration
+or SDK repository is added. Pending OZ08 retry/readiness commit is retained as
+an explicit dependency; generic and downstream gates are required before merge.

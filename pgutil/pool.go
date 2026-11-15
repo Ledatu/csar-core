@@ -17,10 +17,13 @@ import (
 type PoolOption func(*poolConfig)
 
 type poolConfig struct {
-	logger          *slog.Logger
-	maxConns        int32
-	minConns        int32
-	maxConnLifetime time.Duration
+	logger           *slog.Logger
+	maxConns         int32
+	minConns         int32
+	maxConnLifetime  time.Duration
+	readOnly         bool
+	minConnsSet      bool
+	statementTimeout time.Duration
 }
 
 // WithLogger sets the logger for pool operations.
@@ -35,7 +38,17 @@ func WithMaxConns(n int32) PoolOption {
 
 // WithMinConns sets the minimum number of idle connections in the pool.
 func WithMinConns(n int32) PoolOption {
-	return func(c *poolConfig) { c.minConns = n }
+	return func(c *poolConfig) { c.minConns = n; c.minConnsSet = true }
+}
+
+// WithReadOnly sets a session default on a separately supplied reader DSN. It
+// prevents accidental writes; it does not prove that the role is SELECT-only.
+// Deployed role grants still require explicit least-privilege acceptance.
+func WithReadOnly() PoolOption { return func(c *poolConfig) { c.readOnly = true } }
+
+// WithStatementTimeout also bounds SQL on the server if a caller loses its context.
+func WithStatementTimeout(d time.Duration) PoolOption {
+	return func(c *poolConfig) { c.statementTimeout = d }
 }
 
 // WithMaxConnLifetime sets the maximum lifetime of a connection before it is closed and replaced.
@@ -51,6 +64,9 @@ func NewPool(ctx context.Context, dsn string, opts ...PoolOption) (*pgxpool.Pool
 	for _, opt := range opts {
 		opt(cfg)
 	}
+	if cfg.maxConns < 0 || cfg.minConns < 0 || cfg.maxConnLifetime < 0 || cfg.statementTimeout < 0 {
+		return nil, fmt.Errorf("invalid database pool bounds")
+	}
 
 	poolCfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
@@ -60,8 +76,24 @@ func NewPool(ctx context.Context, dsn string, opts ...PoolOption) (*pgxpool.Pool
 	if cfg.maxConns > 0 {
 		poolCfg.MaxConns = cfg.maxConns
 	}
-	if cfg.minConns > 0 {
+	if cfg.minConnsSet {
 		poolCfg.MinConns = cfg.minConns
+	}
+	if cfg.readOnly {
+		if poolCfg.ConnConfig.RuntimeParams == nil {
+			poolCfg.ConnConfig.RuntimeParams = make(map[string]string)
+		}
+		poolCfg.ConnConfig.RuntimeParams["default_transaction_read_only"] = "on"
+	}
+	if cfg.statementTimeout > 0 {
+		if poolCfg.ConnConfig.RuntimeParams == nil {
+			poolCfg.ConnConfig.RuntimeParams = make(map[string]string)
+		}
+		millis := cfg.statementTimeout.Milliseconds()
+		if millis < 1 {
+			millis = 1
+		}
+		poolCfg.ConnConfig.RuntimeParams["statement_timeout"] = fmt.Sprint(millis)
 	}
 	if cfg.maxConnLifetime > 0 {
 		poolCfg.MaxConnLifetime = cfg.maxConnLifetime
