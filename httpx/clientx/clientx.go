@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/ledatu/csar-core/gatewayctx"
+	"github.com/ledatu/csar-core/httpx/retryafter"
 )
 
 // ErrResponseTooLarge is returned when the server response exceeds
@@ -53,7 +54,10 @@ type Error struct {
 	// responses remain "upstream_or_gateway" because the router can proxy an
 	// upstream status and body verbatim.
 	Origin string
-	Err    error
+	// RetryAfter is a sanitized remote hint, capped at retryafter.MaxDelay.
+	// It carries no response headers or sensitive error details.
+	RetryAfter time.Duration
+	Err        error
 }
 
 // Error implements the error interface. When Status is non-zero callers see
@@ -145,14 +149,16 @@ func exec(ctx context.Context, req *http.Request, opts Options) ([]byte, int, *E
 		_ = resp.Body.Close()
 	}()
 
+	hint := retryafter.Parse(resp.Header.Get("Retry-After"), time.Now(), retryafter.MaxDelay)
 	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if readErr != nil {
 		return nil, resp.StatusCode, &Error{
-			Status: resp.StatusCode,
-			Method: req.Method,
-			Path:   req.URL.Path,
-			Origin: classifyResponseOrigin(nil, resp.Header),
-			Err:    fmt.Errorf("clientx: read body: %w", readErr),
+			Status:     resp.StatusCode,
+			Method:     req.Method,
+			Path:       req.URL.Path,
+			Origin:     classifyResponseOrigin(nil, resp.Header),
+			RetryAfter: hint,
+			Err:        fmt.Errorf("clientx: read body: %w", readErr),
 		}
 	}
 
@@ -160,12 +166,13 @@ func exec(ctx context.Context, req *http.Request, opts Options) ([]byte, int, *E
 		origin := classifyResponseOrigin(nil, resp.Header)
 		logOversize(ctx, opts, req, resp.StatusCode, origin)
 		return nil, resp.StatusCode, &Error{
-			Status: resp.StatusCode,
-			Method: req.Method,
-			Path:   req.URL.Path,
-			Body:   nil,
-			Origin: origin,
-			Err:    ErrResponseTooLarge,
+			Status:     resp.StatusCode,
+			Method:     req.Method,
+			Path:       req.URL.Path,
+			Body:       nil,
+			Origin:     origin,
+			RetryAfter: hint,
+			Err:        ErrResponseTooLarge,
 		}
 	}
 
@@ -174,11 +181,12 @@ func exec(ctx context.Context, req *http.Request, opts Options) ([]byte, int, *E
 		origin := classifyResponseOrigin(capped, resp.Header)
 		logNonSuccess(ctx, opts, req, resp.StatusCode, truncated, origin)
 		return nil, resp.StatusCode, &Error{
-			Status: resp.StatusCode,
-			Method: req.Method,
-			Path:   req.URL.Path,
-			Body:   capped,
-			Origin: origin,
+			Status:     resp.StatusCode,
+			Method:     req.Method,
+			Path:       req.URL.Path,
+			Body:       capped,
+			Origin:     origin,
+			RetryAfter: responseRetryAfter(hint, raw, origin, resp.StatusCode),
 		}
 	}
 
@@ -244,7 +252,8 @@ func hasCSARErrorEnvelope(body []byte) bool {
 	switch strings.ToLower(strings.TrimSpace(envelope.Code)) {
 	case "route_not_found", "access_denied", "auth_failed", "throttled",
 		"circuit_open", "backpressure", "upstream_error", "no_healthy_upstream",
-		"tenant_not_found", "response_too_large", "security_error":
+		"tenant_not_found", "response_too_large", "security_error",
+		"credential_invalid", "credential_throttled", "credential_unavailable", "credential_malformed", "credential_configuration":
 		return true
 	default:
 		return false
@@ -304,4 +313,28 @@ func logOversize(ctx context.Context, opts Options, req *http.Request, status in
 		attrs = append(attrs, slog.String("request_id", id.RequestID))
 	}
 	logger.WarnContext(ctx, "clientx: response too large", attrs...)
+}
+
+// Only a complete, consistent CSAR envelope can supplement the HTTP header.
+func responseRetryAfter(header time.Duration, body []byte, origin string, status int) time.Duration {
+	if origin != "csar" || len(body) > logBodyCap {
+		return header
+	}
+	var envelope struct {
+		Code         string `json:"code"`
+		Status       int    `json:"status"`
+		RetryAfterMS *int64 `json:"retry_after_ms"`
+	}
+	if json.Unmarshal(body, &envelope) != nil || envelope.Code == "" || envelope.Status != status || envelope.RetryAfterMS == nil || *envelope.RetryAfterMS <= 0 {
+		return header
+	}
+	millis := *envelope.RetryAfterMS
+	hint := retryafter.MaxDelay
+	if millis < int64(retryafter.MaxDelay/time.Millisecond) {
+		hint = time.Duration(millis) * time.Millisecond
+	}
+	if hint > header {
+		return hint
+	}
+	return header
 }
