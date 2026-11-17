@@ -38,7 +38,6 @@ type Config struct {
 	Authz                  AuthzConfig                    `yaml:"authz,omitempty"`
 	Audit                  stsclient.ServiceAuthConfig    `yaml:"audit,omitempty"`
 	AuditOutboxEnabled     bool                           `yaml:"audit_outbox_enabled"`
-	StorageClient          stsclient.ServiceAuthConfig    `yaml:"storage_client,omitempty"`
 	BotVerify              *BotVerifyConfig               `yaml:"bot_verify,omitempty"`
 	EmailOTP               *EmailOTPConfig                `yaml:"email_otp,omitempty"`
 	LegacyLogin            LegacyLoginConfig              `yaml:"legacy_login,omitempty"`
@@ -408,9 +407,6 @@ func (c *Config) validate() error {
 		return fmt.Errorf("audit_outbox_enabled requires PostgreSQL and configured audit STS transport")
 	}
 	if err := c.Audit.Validate(); err != nil {
-		return err
-	}
-	if err := c.StorageClient.Validate(); err != nil {
 		return err
 	}
 	if c.OAuth.IsEnabled() {

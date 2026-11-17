@@ -192,3 +192,7 @@ timeout setup. Existing pool defaults remain compatible. See csarclient/README.m
 No marketplace-specific transport, external credentials, deployed configuration
 or SDK repository is added. Pending OZ08 retry/readiness commit is retained as
 an explicit dependency; generic and downstream gates are required before merge.
+
+## User Avatar Contract — 17 November 2026
+
+authnconfig no longer exposes or validates the avatar-only StorageClient. Audit STS configuration and generic storage clients remain available to their owners.
