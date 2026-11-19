@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/ledatu/csar-core/tokenmint"
 )
@@ -31,6 +32,12 @@ import (
 // The three are mutually exclusive: an object carrying both a descriptor and a
 // stored value is rejected rather than resolved by precedence.
 type TokenObject struct {
+	// ExpiresAt is the owner-inspected hard deadline of a stored credential.
+	// Nil means unknown; descriptor lifetimes are determined by minting.
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	// CredentialID identifies the value independently of object metadata/ETag.
+	CredentialID string `json:"credential_id,omitempty"`
+
 	// EncryptedToken is the base64-encoded ciphertext (KMS mode).
 	EncryptedToken string `json:"enc_token,omitempty"`
 
@@ -77,6 +84,10 @@ func ParseTokenObject(data []byte) (TokenObject, error) {
 		return TokenObject{}, fmt.Errorf("s3store: parse token object: %w", err)
 	}
 
+	if err := normalizeStoredMetadata(&obj); err != nil {
+		return TokenObject{}, err
+	}
+
 	// The discriminator is checked before anything else so that an unknown
 	// kind can never be silently downgraded to a static token.
 	if obj.IsDescriptor() {
@@ -106,7 +117,11 @@ func ParseTokenObject(data []byte) (TokenObject, error) {
 
 // MarshalTokenObject serializes a TokenObject to JSON suitable for S3 storage.
 func MarshalTokenObject(obj *TokenObject) ([]byte, error) {
-	data, err := json.Marshal(obj)
+	copyObject := *obj
+	if err := normalizeStoredMetadata(&copyObject); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(&copyObject)
 	if err != nil {
 		return nil, fmt.Errorf("s3store: marshal token object: %w", err)
 	}

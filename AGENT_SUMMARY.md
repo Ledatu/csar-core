@@ -46,6 +46,10 @@ Postgres utilities, and secret redaction.
 - TLS client/server config generation for mTLS-enabled services.
 
 ## Config And Secrets
+- `s3store.TokenObject` has optional UTC `expires_at` and stable
+  `credential_id` for stored values. Missing expiry means unknown; descriptors
+  retain grant lifetime. Providers inspect expiry; generic storage does not parse
+  marketplace JWTs. Credential fingerprints must not be logged.
 - `authnconfig` supports explicit `oauth.enabled: false` without provider
   credentials or a state-cookie secret; omitted flags retain enabled validation.
 - Env expansion, secret redaction, and Yandex Cloud auth helpers are core
