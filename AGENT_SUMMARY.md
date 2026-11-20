@@ -207,3 +207,8 @@ authnconfig no longer exposes or validates the avatar-only StorageClient. Audit 
 - redisutil owns the shared Redis client config/factory.
 - These primitives were extracted from Aurum Core without changing lock keys,
   session JSON, error identity or the existing value-parameter public API.
+
+The authntokens package defines the service-neutral router-to-issuer delegation
+request and result. Exchange, discovery and resource consumption are bound to a
+purpose, audience and scope. The resource owner supplies its catalog and mapping
+to authorization tenants.
