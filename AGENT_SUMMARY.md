@@ -200,3 +200,10 @@ an explicit dependency; generic and downstream gates are required before merge.
 ## User Avatar Contract — 17 November 2026
 
 authnconfig no longer exposes or validates the avatar-only StorageClient. Audit STS configuration and generic storage clients remain available to their owners.
+
+## Redis coordination
+- Generic Redis lock interfaces, owner-safe acquisition/release, renewable
+  sessions, progress metadata and context helpers live in lock.
+- redisutil owns the shared Redis client config/factory.
+- These primitives were extracted from Aurum Core without changing lock keys,
+  session JSON, error identity or the existing value-parameter public API.
