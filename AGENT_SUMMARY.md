@@ -1,3 +1,11 @@
+## Complete JSON documents (November20)
+
+httpx.ReadJSON now requires EOF after the first decoded value. A second decode
+rejects stray closing delimiters and malformed/trailing tokens which dec.More
+could accept. Whitespace-only suffixes, field validation and body bounds remain
+compatible. This is an existing shared helper correction, not a service decoder
+or automatic runtime change. Downstream router/authn/authz build/tests are required.
+
 ## Bounded HTTP retries and native pool readiness (November 14)
 
 `httpx/retryafter` centralizes bounded delta-seconds/HTTP-date parsing previously
