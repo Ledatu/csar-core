@@ -3,6 +3,9 @@ package audit
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 const (
@@ -32,6 +35,32 @@ func ValidateEvent(e *Event) error {
 	}
 	if len(e.Metadata) > MaxMetadataBytes {
 		return fmt.Errorf("audit metadata exceeds %d bytes", MaxMetadataBytes)
+	}
+	return validateCallerContext(e)
+}
+
+func validateCallerContext(e *Event) error {
+	if e.Caller != nil {
+		if err := e.Caller.Validate(); err != nil {
+			return fmt.Errorf("audit caller: %w", err)
+		}
+	}
+	if e.OriginCaller != nil {
+		if e.Caller == nil {
+			return fmt.Errorf("audit: origin requires an immediate caller")
+		}
+		if err := e.OriginCaller.Validate(); err != nil {
+			return fmt.Errorf("audit origin: %w", err)
+		}
+	}
+	for _, field := range []struct{ name, value string }{
+		{"operation_id", e.OperationID}, {"parent_operation_id", e.ParentOperationID}, {"trace_id", e.TraceID},
+	} {
+		if len(field.value) > 128 || !utf8.ValidString(field.value) || strings.IndexFunc(field.value, func(r rune) bool {
+			return unicode.IsControl(r) || unicode.IsSpace(r)
+		}) >= 0 {
+			return fmt.Errorf("audit: invalid %s", field.name)
+		}
 	}
 	return nil
 }

@@ -15,6 +15,9 @@ func PrepareEvent(event *Event) (*Event, error) {
 		return nil, errors.New("audit: event is required")
 	}
 	prepared := cloneEvent(event)
+	if err := validateCallerContext(prepared); err != nil {
+		return nil, err
+	}
 	var id uuid.UUID
 	var err error
 	if prepared.ID == "" {

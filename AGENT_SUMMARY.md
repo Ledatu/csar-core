@@ -11,6 +11,11 @@ service. See the OZ08 owner for durable cabinet cooldown policy.
 
 # csar-core Agent Summary
 
+Audit events optionally carry caller/origin and operation/trace context. Owned
+cloning and JSON/protobuf bindings preserve it; legacy omitted fields retain
+their previous JSON bytes. EventFromProto is the common validated receiver
+binding. Service receivers/storage must upgrade before producers use these fields.
+
 ## W1 token principal contract (source only)
 
 caller.Identity is the shared versioned token-principal shape. Validate checks

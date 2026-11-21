@@ -273,5 +273,13 @@ func cloneEvent(e *Event) *Event {
 	cp.BeforeState = append(json.RawMessage(nil), e.BeforeState...)
 	cp.AfterState = append(json.RawMessage(nil), e.AfterState...)
 	cp.Metadata = append(json.RawMessage(nil), e.Metadata...)
+	if e.Caller != nil {
+		identity := *e.Caller
+		cp.Caller = &identity
+	}
+	if e.OriginCaller != nil {
+		identity := *e.OriginCaller
+		cp.OriginCaller = &identity
+	}
 	return &cp
 }

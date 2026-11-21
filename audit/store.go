@@ -7,25 +7,32 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/ledatu/csar-core/caller"
 )
 
 // Event represents a single admin audit log entry.
 type Event struct {
 	// ID identifies one logical emission. Retain it and CreatedAt across retries.
-	ID          string          `json:"id"`
-	Service     string          `json:"service,omitempty"`
-	Actor       string          `json:"actor"`
-	Action      string          `json:"action"`
-	TargetType  string          `json:"target_type"`
-	TargetID    string          `json:"target_id"`
-	ScopeType   string          `json:"scope_type"`
-	ScopeID     string          `json:"scope_id"`
-	BeforeState json.RawMessage `json:"before_state,omitempty"`
-	AfterState  json.RawMessage `json:"after_state,omitempty"`
-	Metadata    json.RawMessage `json:"metadata,omitempty"`
-	RequestID   string          `json:"request_id,omitempty"`
-	ClientIP    string          `json:"client_ip,omitempty"`
-	CreatedAt   time.Time       `json:"created_at"`
+	ID                string           `json:"id"`
+	Service           string           `json:"service,omitempty"`
+	Actor             string           `json:"actor"`
+	Action            string           `json:"action"`
+	TargetType        string           `json:"target_type"`
+	TargetID          string           `json:"target_id"`
+	ScopeType         string           `json:"scope_type"`
+	ScopeID           string           `json:"scope_id"`
+	BeforeState       json.RawMessage  `json:"before_state,omitempty"`
+	AfterState        json.RawMessage  `json:"after_state,omitempty"`
+	Metadata          json.RawMessage  `json:"metadata,omitempty"`
+	RequestID         string           `json:"request_id,omitempty"`
+	ClientIP          string           `json:"client_ip,omitempty"`
+	CreatedAt         time.Time        `json:"created_at"`
+	Caller            *caller.Identity `json:"caller,omitempty"`
+	OriginCaller      *caller.Identity `json:"origin_caller,omitempty"`
+	OperationID       string           `json:"operation_id,omitempty"`
+	ParentOperationID string           `json:"parent_operation_id,omitempty"`
+	TraceID           string           `json:"trace_id,omitempty"`
 }
 
 // ListFilter specifies query parameters for listing audit events.
