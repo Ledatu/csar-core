@@ -11,6 +11,14 @@ service. See the OZ08 owner for durable cabinet cooldown policy.
 
 # csar-core Agent Summary
 
+## W1 token principal contract (source only)
+
+caller.Identity is the shared versioned token-principal shape. Validate checks
+structure, not authenticity or authority; issuer/registry bindings establish
+caller kind. Legacy unregistered credentials remain unknown. Existing authntokens
+responses accept optional identity without changing omitted legacy responses.
+No gateway headers, token producers or runtime policies are activated here.
+
 ## Role In Prod
 `csar-core` is the shared Go primitive layer for the entire stack. It supplies
 gateway identity parsing, JWKS verification, STS router clients, HTTP helpers,

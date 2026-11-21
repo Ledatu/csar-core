@@ -2,7 +2,11 @@
 // authn-managed route token issuance.
 package authntokens
 
-import "time"
+import (
+	"time"
+
+	"github.com/ledatu/csar-core/caller"
+)
 
 const (
 	ReasonMissingClaim   = "missing_claim"
@@ -37,7 +41,8 @@ type IssueTokenError struct {
 
 // ValidateResponse is returned by POST /auth/validate for valid sessions.
 type ValidateResponse struct {
-	Headers map[string]string `json:"headers,omitempty"`
-	Tokens  []IssuedToken     `json:"tokens,omitempty"`
-	Errors  []IssueTokenError `json:"errors,omitempty"`
+	Identity *caller.Identity  `json:"identity,omitempty"`
+	Headers  map[string]string `json:"headers,omitempty"`
+	Tokens   []IssuedToken     `json:"tokens,omitempty"`
+	Errors   []IssueTokenError `json:"errors,omitempty"`
 }
