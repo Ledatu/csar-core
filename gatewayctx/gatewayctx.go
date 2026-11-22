@@ -115,11 +115,14 @@ func (id *Identity) SubjectUUID() (uuid.UUID, error) {
 
 type ctxKey struct{}
 
-// FromRequest is the compatibility parser. Malformed optional caller metadata
-// remains absent. Use FromRequestChecked to distinguish it from a legacy request.
+// FromRequest is the compatibility parser. Malformed present caller metadata
+// returns an empty identity. Use FromRequestChecked to inspect the error.
 // Neither parser verifies the request source.
 func FromRequest(r *http.Request) Identity {
-	id, _ := FromRequestChecked(r)
+	id, err := FromRequestChecked(r)
+	if err != nil {
+		return Identity{}
+	}
 	return id
 }
 

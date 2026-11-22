@@ -84,6 +84,9 @@ func TestCallerHeaderRejectsMalformedOrMismatchedAssertions(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			r := boundCallerRequest(t)
 			mutate(r.Header)
+			if id := FromRequest(r); id.Subject != "" || id.Caller != nil {
+				t.Fatal("compatibility parser downgraded malformed metadata to an authenticated identity")
+			}
 			w := httptest.NewRecorder()
 			Middleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("malformed caller reached backend") })).ServeHTTP(w, r)
 			if w.Code != http.StatusBadRequest || strings.Contains(w.Body.String(), "secret") {
