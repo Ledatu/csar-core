@@ -119,6 +119,38 @@ client, err := stsclient.NewRouterClient(&stsclient.ServiceAuthConfig{
 
 ---
 
+### `origincontext` — Per-request service delegation
+
+`NewDelegateClient(router.BaseURL, target.Client, issuer.Client)` reuses existing
+STS router clients, allowing separate target and delegation audiences.
+`Client("svc:owner")` returns a receiver-bound HTTP client; adopt a parent
+with `WithGatewayParent(ctx, incoming)` only after enforcing trusted gateway
+ingress. Use that context on the outgoing request. Authn validates the opaque
+parent and returns a child bound to the actual request; CSAR validates the child
+alongside the unchanged service STS authority. Backend services do not validate
+access JWTs or contact Authn directly.
+
+Each dispatch gets its own child. Missing/expired parents and off-router targets
+fail closed. Parent expiry bounds response IO; close response bodies. Redirects
+and automatic router retries are disabled. Proofs must never enter logs, audit
+DTOs, shared caches or background jobs; long jobs need freshly authorized context.
+Waiting behind a shared STS refresh honors each request's context; cancelling
+one waiter does not cancel the active refresh or discard its token cache.
+
+### `usagebudget` — Atomic Redis usage admission
+
+`New(client, prefix, timeout)` requires context-aware go-redis IO and accepts
+standalone/Sentinel or Cluster clients. Disable driver retries for single-charge
+attempts. `Take` atomically checks and charges up to eight named dimensions with
+bounded units and fixed windows anchored at first use. Stable subjects are hashed;
+all keys for one policy share a Cluster slot. A typed `Exceeded` carries dimension
+and retry timing. Limit denials do not partially charge or allocate new subjects;
+uncertain infrastructure outcomes fail closed and may have charged usage.
+
+These counters are not sliding rate buckets, concurrency leases or report-byte
+reservations. Native Lua checks use an opt-in disposable localhost fixture via
+`USAGEBUDGET_TEST_REDIS_ADDR`; no test flushes a database.
+
 ### `s3store` — S3-compatible object storage client
 
 Supports Yandex Cloud Object Storage (and any S3-compatible backend). Two auth modes: static AWS Sig V4 keys, or Yandex Cloud IAM tokens.
