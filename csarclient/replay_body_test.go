@@ -60,6 +60,7 @@ func TestHTTP429WaitRequiresBothReplaySafetyAndExplicitOptIn(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			calls++
 			if calls == 1 {
+				w.Header().Set("X-CSAR-Status", "throttled")
 				w.Header().Set("X-CSAR-Wait-MS", "2")
 				w.WriteHeader(429)
 				_, _ = w.Write([]byte(`{}`))
@@ -67,7 +68,7 @@ func TestHTTP429WaitRequiresBothReplaySafetyAndExplicitOptIn(t *testing.T) {
 			}
 			_, _ = w.Write([]byte(`{}`))
 		}))
-		client := newTestClient(t, server, func(c *Config) { c.WaitBudget = 50 * time.Millisecond; c.MaxRetries = 1; c.RetryHTTP429 = test.opt })
+		client := newTestClient(t, server, func(c *Config) { c.WaitBudget = time.Second; c.MaxRetries = 1; c.RetryHTTP429 = test.opt })
 		_, e := DoJSON[any](context.Background(), client, Request{Method: "POST", Path: "/read", Body: struct{}{}, ReplaySafe: test.safe})
 		server.Close()
 		if calls != test.want || (e == nil) != (test.want == 2) {
