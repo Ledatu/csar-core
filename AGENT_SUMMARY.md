@@ -270,3 +270,7 @@ The authntokens package defines the service-neutral router-to-issuer delegation
 request and result. Exchange, discovery and resource consumption are bound to a
 purpose, audience and scope. The resource owner supplies its catalog and mapping
 to authorization tenants.
+
+The universal csarclient also offers opt-in RetryHTTP429 for replay-safe reads
+within an explicit short WaitBudget/MaxRetries. Default worker requests and
+non-replayable mutations remain single-attempt.

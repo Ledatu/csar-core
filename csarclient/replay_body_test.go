@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestNonReplaySafeBodyCannotBeRecreatedByTransport(t *testing.T) {
@@ -46,6 +47,31 @@ func TestExplicitReplayPolicyOwnsGetBody(t *testing.T) {
 		req, e := client.build(context.Background(), Request{Method: "POST", Path: "/source", Body: struct{}{}, ReplaySafe: safe}, []byte(`{}`))
 		if e != nil || (req.GetBody != nil) != safe {
 			t.Fatal("replay policy ignored", safe, e)
+		}
+	}
+}
+
+func TestHTTP429WaitRequiresBothReplaySafetyAndExplicitOptIn(t *testing.T) {
+	for _, test := range []struct {
+		safe, opt bool
+		want      int
+	}{{false, true, 1}, {true, false, 1}, {true, true, 2}} {
+		calls := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			calls++
+			if calls == 1 {
+				w.Header().Set("X-CSAR-Wait-MS", "2")
+				w.WriteHeader(429)
+				_, _ = w.Write([]byte(`{}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{}`))
+		}))
+		client := newTestClient(t, server, func(c *Config) { c.WaitBudget = 50 * time.Millisecond; c.MaxRetries = 1; c.RetryHTTP429 = test.opt })
+		_, e := DoJSON[any](context.Background(), client, Request{Method: "POST", Path: "/read", Body: struct{}{}, ReplaySafe: test.safe})
+		server.Close()
+		if calls != test.want || (e == nil) != (test.want == 2) {
+			t.Fatal(test, calls, e)
 		}
 	}
 }

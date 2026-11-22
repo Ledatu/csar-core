@@ -23,6 +23,9 @@ var ErrInvalidRequest = errors.New("csarclient: invalid request")
 var ErrRequestTooLarge = errors.New("csarclient: request exceeds size limit")
 
 type Config struct {
+	// RetryHTTP429 is opt-in for replay-safe interactive reads within WaitBudget.
+	RetryHTTP429 bool
+
 	BaseURL                           string
 	HTTPClient                        *http.Client
 	Timeout                           time.Duration
@@ -48,6 +51,7 @@ type Request struct {
 	ReplaySafe bool
 }
 
+//nolint:gocritic // Keep the existing public value-config API; the configuration is copied only at construction.
 func New(cfg Config) (*Client, error) {
 	u, err := url.Parse(cfg.BaseURL)
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" || cfg.HTTPClient == nil || cfg.Timeout < 0 || cfg.MaxRequestBytes < 0 || cfg.MaxResponseBytes < 0 || cfg.WaitBudget < 0 || cfg.WaitBudget > 5*time.Second || cfg.MaxRetries < 0 || cfg.MaxRetries > 3 {
@@ -155,7 +159,8 @@ func DoJSON[T any](ctx context.Context, c *Client, r Request) (T, *clientx.Error
 		} else if callErr.RetryAfterHeader > 0 {
 			callErr.RetryAfter = callErr.RetryAfterHeader
 		}
-		if !r.ReplaySafe || c.cfg.WaitBudget == 0 || attempt >= c.cfg.MaxRetries || callErr.Status != 503 || (callErr.CSARStatus != "throttled" && callErr.CSARStatus != "backpressure") {
+		retryStatus := callErr.Status == 503 && (callErr.CSARStatus == "throttled" || callErr.CSARStatus == "backpressure") || callErr.Status == 429 && c.cfg.RetryHTTP429
+		if !r.ReplaySafe || c.cfg.WaitBudget == 0 || attempt >= c.cfg.MaxRetries || !retryStatus {
 			return zero, callErr
 		}
 		delay := callErr.RetryAfter
