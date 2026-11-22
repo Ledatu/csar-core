@@ -33,7 +33,7 @@ func SetCaller(h http.Header, id *caller.Identity) error {
 	if id == nil {
 		return nil
 	}
-	if id.ValidateBinding(h.Get(HeaderSubject), h.Get(HeaderCredentialID)) != nil {
+	if validateCallerEnvelope(h, id) != nil {
 		return ErrInvalidCaller
 	}
 	body, err := json.Marshal(id)
@@ -51,16 +51,9 @@ func SetCaller(h http.Header, id *caller.Identity) error {
 // CallerFromHeaders checks shape and envelope consistency, not source trust.
 // Absence is legacy-compatible; malformed present metadata is an error.
 func CallerFromHeaders(h http.Header) (*caller.Identity, error) {
-	var value string
-	present := false
-	for name, values := range h {
-		if !strings.EqualFold(name, HeaderCaller) {
-			continue
-		}
-		if present || len(values) != 1 {
-			return nil, ErrInvalidCaller
-		}
-		present, value = true, values[0]
+	value, present, err := singleCallerHeader(h, HeaderCaller)
+	if err != nil {
+		return nil, err
 	}
 	if !present {
 		return nil, nil
@@ -76,8 +69,33 @@ func CallerFromHeaders(h http.Header) (*caller.Identity, error) {
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&id) != nil || decoder.Decode(new(any)) != io.EOF ||
-		id.ValidateBinding(h.Get(HeaderSubject), h.Get(HeaderCredentialID)) != nil {
+		validateCallerEnvelope(h, &id) != nil {
 		return nil, ErrInvalidCaller
 	}
 	return &id, nil
+}
+
+func validateCallerEnvelope(h http.Header, id *caller.Identity) error {
+	subject, _, err := singleCallerHeader(h, HeaderSubject)
+	if err != nil {
+		return err
+	}
+	credential, _, err := singleCallerHeader(h, HeaderCredentialID)
+	if err != nil {
+		return err
+	}
+	return id.ValidateBinding(subject, credential)
+}
+
+func singleCallerHeader(h http.Header, target string) (value string, present bool, err error) {
+	for name, values := range h {
+		if !strings.EqualFold(name, target) {
+			continue
+		}
+		if present || len(values) != 1 {
+			return "", false, ErrInvalidCaller
+		}
+		present, value = true, values[0]
+	}
+	return value, present, nil
 }
