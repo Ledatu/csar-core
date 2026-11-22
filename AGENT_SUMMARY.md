@@ -1,3 +1,11 @@
+## Non-replayable CSAR request bodies
+
+`csarclient` clears `GetBody` when `ReplaySafe` is false. A caller idempotency
+header cannot grant implicit net/http body replay after a reused connection
+closes. Reviewed replay-safe reads retain reconstruction and existing SDK/STS
+policy. A real connection-loss regression covers the write path; downstream
+router/Authn/Authz build/tests pass. No service/router activation is implied.
+
 ## Complete JSON documents (November20)
 
 httpx.ReadJSON now requires EOF after the first decoded value. A second decode
@@ -278,3 +286,11 @@ The authntokens package defines the service-neutral router-to-issuer delegation
 request and result. Exchange, discovery and resource consumption are bound to a
 purpose, audience and scope. The resource owner supplies its catalog and mapping
 to authorization tenants.
+
+The universal csarclient also offers opt-in RetryHTTP429 for replay-safe reads
+within an explicit short WaitBudget/MaxRetries. Default worker requests and
+non-replayable mutations remain single-attempt.
+
+STS and router HTTP clients reject all redirects before another request can carry
+a signed assertion or service Bearer outside its configured endpoint. Universal
+csarclient remains the bounded request layer for new owner adapters.

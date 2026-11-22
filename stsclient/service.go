@@ -137,8 +137,9 @@ func NewRouterClient(cfg *ServiceAuthConfig, logger *slog.Logger) (*RouterClient
 		KeyPair:           kp,
 		AssertionTTL:      4 * time.Minute,
 		HTTPClient: &http.Client{
-			Transport: stsTransport,
-			Timeout:   stsInternalTimeout,
+			Transport:     stsTransport,
+			CheckRedirect: refuseRedirect,
+			Timeout:       stsInternalTimeout,
 		},
 		Logger: logger,
 	})
@@ -147,7 +148,8 @@ func NewRouterClient(cfg *ServiceAuthConfig, logger *slog.Logger) (*RouterClient
 	}
 
 	client := &http.Client{
-		Transport: ts.Transport(newRetryTransport(routerTransport, logger)),
+		Transport:     ts.Transport(newRetryTransport(routerTransport, logger)),
+		CheckRedirect: refuseRedirect,
 	}
 	if cfg.RouterTimeout > 0 {
 		client.Timeout = cfg.RouterTimeout
@@ -158,3 +160,6 @@ func NewRouterClient(cfg *ServiceAuthConfig, logger *slog.Logger) (*RouterClient
 		BaseURL: cfg.RouterBaseURL,
 	}, nil
 }
+
+// Redirects must never escape the configured STS/router credential boundary.
+func refuseRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }

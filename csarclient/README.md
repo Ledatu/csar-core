@@ -19,8 +19,9 @@ safe replay, and the client never creates provider credentials/idempotency keys.
 
 Explicit `WaitBudget` (at most 5 seconds), `MaxRetries` (at most 3) AND per-request
 `ReplaySafe` enable short synchronous waits only for marked throttled/backpressure
-503 responses. Circuits, unknown/unmarked 503s, network ambiguity and unrelated
-statuses are returned. Timing priority follows X-CSAR-Wait-MS, Retry-After, then
+503 responses. Explicit `RetryHTTP429` additionally allows bounded waits for 429
+on those replay-safe requests; it defaults false. Circuits, unknown/unmarked
+503s, network ambiguity and unrelated statuses are returned. Timing priority follows X-CSAR-Wait-MS, Retry-After, then
 the validated envelope hint. Context bounds all attempts and waits. This is not a
 claim of complete TS/Python feature parity or a public standalone SDK release.
 
