@@ -1,12 +1,26 @@
 package audit
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"testing"
 
 	"github.com/ledatu/csar-core/caller"
 )
+
+func TestLegacyLocalStoreRejectsCallerContextBeforeWriting(t *testing.T) {
+	for _, event := range []*Event{
+		{Caller: &caller.Identity{}}, {OriginCaller: &caller.Identity{}},
+		{OperationID: "op:1"}, {ParentOperationID: "op:0"}, {TraceID: "trace:1"},
+	} {
+		st := &PostgresStore{}
+		if err := st.Record(context.Background(), event); !errors.Is(err, ErrCallerContextUnsupported) {
+			t.Fatal("legacy local sink silently discarded caller context", err)
+		}
+	}
+}
 
 func callerEvent(t *testing.T) *Event {
 	t.Helper()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -39,7 +40,11 @@ CREATE INDEX IF NOT EXISTS idx_audit_actor
 	},
 }
 
-// PostgresStore implements Store backed by PostgreSQL.
+// ErrCallerContextUnsupported prevents silent loss in the legacy local sink.
+// Caller-aware events must use the upgraded central audit receiver.
+var ErrCallerContextUnsupported = errors.New("audit: legacy local store does not support caller context")
+
+// PostgresStore implements the legacy local Store backed by PostgreSQL.
 type PostgresStore struct {
 	pool   *pgxpool.Pool
 	logger *slog.Logger
@@ -56,6 +61,9 @@ func (s *PostgresStore) Migrate(ctx context.Context) error {
 }
 
 func (s *PostgresStore) Record(ctx context.Context, event *Event) error {
+	if event.Caller != nil || event.OriginCaller != nil || event.OperationID != "" || event.ParentOperationID != "" || event.TraceID != "" {
+		return ErrCallerContextUnsupported
+	}
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO audit_events (actor, action, target_type, target_id, scope_type, scope_id, before_state, after_state, metadata)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
