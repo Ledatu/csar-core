@@ -22,7 +22,9 @@ service. See the OZ08 owner for durable cabinet cooldown policy.
 origincontext.DelegateClient reuses an existing authenticated STS router client
 for the Authn delegation route. WithGatewayParent adopts an opaque parent only
 from trusted gateway ingress; every dispatch obtains a child bound to the actual
-method/URI/body and receiver. STS remains shared and independent. Parent expiry
+method/URI/body and receiver. Target/issuer clients support separate audiences;
+STS remains shared and independent per client. Refresh waiters honor cancellation
+without interrupting an active exchange. Parent expiry
 bounds response IO; redirects/retries and off-router targets fail closed. It adds
 no service activation, backend access-token verifier or direct Authn connection.
 

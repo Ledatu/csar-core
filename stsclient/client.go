@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -63,7 +62,7 @@ type TokenSource struct {
 	client *http.Client
 	logger *slog.Logger
 
-	mu        sync.Mutex
+	gate      chan struct{}
 	token     string
 	expiry    time.Time
 	assertTTL time.Duration
@@ -102,6 +101,7 @@ func New(cfg *Config) (*TokenSource, error) {
 		log = slog.Default()
 	}
 	return &TokenSource{
+		gate:      make(chan struct{}, 1),
 		cfg:       *cfg,
 		client:    c,
 		logger:    log,
@@ -117,8 +117,15 @@ type tokenResponse struct {
 
 // Token returns a valid Bearer access token, exchanging a fresh assertion when needed.
 func (ts *TokenSource) Token(ctx context.Context) (string, error) {
-	ts.mu.Lock()
-	defer ts.mu.Unlock()
+	select {
+	case ts.gate <- struct{}{}:
+		defer func() { <-ts.gate }()
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 
 	if ts.token != "" && time.Now().Before(ts.expiry) {
 		return ts.token, nil

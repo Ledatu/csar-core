@@ -121,8 +121,9 @@ client, err := stsclient.NewRouterClient(&stsclient.ServiceAuthConfig{
 
 ### `origincontext` — Per-request service delegation
 
-`NewDelegateClient(router.BaseURL, router.Client)` reuses an existing STS router
-client. `Client("svc:owner")` returns a receiver-bound HTTP client; adopt a parent
+`NewDelegateClient(router.BaseURL, target.Client, issuer.Client)` reuses existing
+STS router clients, allowing separate target and delegation audiences.
+`Client("svc:owner")` returns a receiver-bound HTTP client; adopt a parent
 with `WithGatewayParent(ctx, incoming)` only after enforcing trusted gateway
 ingress. Use that context on the outgoing request. Authn validates the opaque
 parent and returns a child bound to the actual request; CSAR validates the child
@@ -133,6 +134,8 @@ Each dispatch gets its own child. Missing/expired parents and off-router targets
 fail closed. Parent expiry bounds response IO; close response bodies. Redirects
 and automatic router retries are disabled. Proofs must never enter logs, audit
 DTOs, shared caches or background jobs; long jobs need freshly authorized context.
+Waiting behind a shared STS refresh honors each request's context; cancelling
+one waiter does not cancel the active refresh or discard its token cache.
 
 ### `s3store` — S3-compatible object storage client
 

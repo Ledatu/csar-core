@@ -36,10 +36,14 @@ func TestDelegationUsesPerRequestProofAndSharedSTS(t *testing.T) {
 			if strings.Contains(r.Form.Get("assertion"), "parent_token") {
 				t.Error("parent entered STS exchange")
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "shared-sts", "token_type": "Bearer", "expires_in": 3600})
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": r.Form.Get("audience") + "-sts", "token_type": "Bearer", "expires_in": 3600})
 			return
 		}
-		if r.Header.Get(gatewayctx.HeaderCsarAuthorization) != "Bearer shared-sts" {
+		expected := "access-sts"
+		if r.URL.Path == "/svc/authn/origin-context/delegate" {
+			expected = "delegate-sts"
+		}
+		if r.Header.Get(gatewayctx.HeaderCsarAuthorization) != "Bearer "+expected {
 			t.Error("missing immediate service STS")
 		}
 		if r.URL.Path == "/svc/authn/origin-context/delegate" {
@@ -80,7 +84,13 @@ func TestDelegationUsesPerRequestProofAndSharedSTS(t *testing.T) {
 	}
 	authenticated := *server.Client()
 	authenticated.Transport = ts.Transport(authenticated.Transport)
-	delegate, err := NewDelegateClient(server.URL, &authenticated)
+	issuerTS, err := stsclient.New(&stsclient.Config{STSEndpoint: server.URL + "/sts", Audience: "delegate", ServiceName: "svc:reporting", AssertionAudience: "issuer", KeyPair: keys, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	issuerAuthenticated := *server.Client()
+	issuerAuthenticated.Transport = issuerTS.Transport(issuerAuthenticated.Transport)
+	delegate, err := NewDelegateClient(server.URL, &authenticated, &issuerAuthenticated)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +137,7 @@ func TestDelegationUsesPerRequestProofAndSharedSTS(t *testing.T) {
 			t.Fatal("origin lost", string(body), err)
 		}
 	}
-	if exchanges.Load() != 1 || delegations.Load() != 2 || reads.Load() != 2 {
+	if exchanges.Load() != 2 || delegations.Load() != 2 || reads.Load() != 2 {
 		t.Fatal("origin polluted STS cache or reused child")
 	}
 	req, _ := http.NewRequest("GET", server.URL+"/read", nil)

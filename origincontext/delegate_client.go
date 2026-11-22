@@ -57,12 +57,15 @@ type DelegateClient struct {
 	issuer *csarclient.Client
 }
 
-func NewDelegateClient(routerBaseURL string, authenticated *http.Client) (*DelegateClient, error) {
+// The target and issuer clients may use different STS audiences. Both are
+// existing router clients for the same service; neither receives origin claims
+// in its reusable token cache.
+func NewDelegateClient(routerBaseURL string, authenticated, issuerAuthenticated *http.Client) (*DelegateClient, error) {
 	u, err := url.Parse(routerBaseURL)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" || authenticated == nil || authenticated.Jar != nil {
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" || authenticated == nil || authenticated.Jar != nil || issuerAuthenticated == nil || issuerAuthenticated.Jar != nil {
 		return nil, ErrInvalid
 	}
-	issuer, err := csarclient.New(csarclient.Config{BaseURL: routerBaseURL, HTTPClient: authenticated, Timeout: 5 * time.Second, MaxRequestBytes: 16 << 10, MaxResponseBytes: 16 << 10})
+	issuer, err := csarclient.New(csarclient.Config{BaseURL: routerBaseURL, HTTPClient: issuerAuthenticated, Timeout: 5 * time.Second, MaxRequestBytes: 16 << 10, MaxResponseBytes: 16 << 10})
 	if err != nil {
 		return nil, ErrInvalid
 	}
