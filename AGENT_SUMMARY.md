@@ -28,6 +28,13 @@ without interrupting an active exchange. Parent expiry
 bounds response IO; redirects/retries and off-router targets fail closed. It adds
 no service activation, backend access-token verifier or direct Authn connection.
 
+usagebudget supplies atomic Redis multi-dimension weighted usage counters with
+bounded fixed windows, units and dimensions. Policy keys share a Cluster slot;
+stable subjects are hashed and credentials/transport are excluded. Limit denials
+charge nothing; infrastructure uncertainty fails closed without inferred refunds.
+Context-aware Redis IO is mandatory; disable driver retries for single-charge
+attempts. This is not a concurrency/byte reservation or activation of production.
+
 gatewayctx.Origin forwards a separately owned original caller and canonical
 operation chain/expiry under the same trusted ingress boundary. It preserves the
 immediate Caller/Subject and shares their bounded codec; ambiguous partial origin

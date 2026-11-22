@@ -137,6 +137,20 @@ DTOs, shared caches or background jobs; long jobs need freshly authorized contex
 Waiting behind a shared STS refresh honors each request's context; cancelling
 one waiter does not cancel the active refresh or discard its token cache.
 
+### `usagebudget` — Atomic Redis usage admission
+
+`New(client, prefix, timeout)` requires context-aware go-redis IO and accepts
+standalone/Sentinel or Cluster clients. Disable driver retries for single-charge
+attempts. `Take` atomically checks and charges up to eight named dimensions with
+bounded units and fixed windows anchored at first use. Stable subjects are hashed;
+all keys for one policy share a Cluster slot. A typed `Exceeded` carries dimension
+and retry timing. Limit denials do not partially charge or allocate new subjects;
+uncertain infrastructure outcomes fail closed and may have charged usage.
+
+These counters are not sliding rate buckets, concurrency leases or report-byte
+reservations. Native Lua checks use an opt-in disposable localhost fixture via
+`USAGEBUDGET_TEST_REDIS_ADDR`; no test flushes a database.
+
 ### `s3store` — S3-compatible object storage client
 
 Supports Yandex Cloud Object Storage (and any S3-compatible backend). Two auth modes: static AWS Sig V4 keys, or Yandex Cloud IAM tokens.
