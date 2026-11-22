@@ -19,6 +19,12 @@ service. See the OZ08 owner for durable cabinet cooldown policy.
 
 # csar-core Agent Summary
 
+origincontext.RootClient is gateway-only dedicated HTTPS/mTLS root issuance. It
+reuses csarclient/clientx bounds and disables redirects/retries; response signature,
+caller/receiver/resource/request digest, root depth and source expiry are checked.
+Errors omit issuer bodies and credentials. Call Close to release its cloned
+transport; supply bounded trusted-key resolution. No route/runtime activation.
+
 W2 origincontext defines separate attribution JWTs (never access tokens), with
 issuer/receiver/purpose, resource and original request digest bindings, bounded
 60-second lifetime, depth four and child expiry no later than its parent. Root
