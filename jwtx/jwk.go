@@ -115,11 +115,19 @@ func jwkToECPublicKey(jwk *JWK) (*ecdsa.PublicKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("jwtx: decoding EC y: %w", err)
 	}
-	return &ecdsa.PublicKey{
-		Curve: curve,
-		X:     new(big.Int).SetBytes(xBytes),
-		Y:     new(big.Int).SetBytes(yBytes),
-	}, nil
+	width := (curve.Params().BitSize + 7) / 8
+	if len(xBytes) != width || len(yBytes) != width {
+		return nil, fmt.Errorf("jwtx: invalid EC coordinate length")
+	}
+	point := make([]byte, 1+2*width)
+	point[0] = 4 // SEC 1 uncompressed point: 0x04 || X || Y.
+	copy(point[1:], xBytes)
+	copy(point[1+width:], yBytes)
+	key, err := ecdsa.ParseUncompressedPublicKey(curve, point)
+	if err != nil {
+		return nil, fmt.Errorf("jwtx: invalid EC public key: %w", err)
+	}
+	return key, nil
 }
 
 func jwkToEdPublicKey(jwk *JWK) (ed25519.PublicKey, error) {
