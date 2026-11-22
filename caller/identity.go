@@ -90,6 +90,18 @@ func (id *Identity) Validate() error {
 	return nil
 }
 
+// ValidateBinding additionally checks the authenticated envelope. The caller
+// must already have verified the credential; this method supplies no authority.
+func (id *Identity) ValidateBinding(subject, credentialID string) error {
+	if err := id.Validate(); err != nil {
+		return err
+	}
+	if id.EffectiveSubject != subject || id.CredentialID != credentialID {
+		return fmt.Errorf("caller: identity does not match authenticated envelope")
+	}
+	return nil
+}
+
 func validReference(value string) bool {
 	if len(value) > 256 {
 		return false

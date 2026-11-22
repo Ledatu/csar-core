@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/ledatu/csar-core/caller"
 )
 
 // Trusted header names. The csar gateway strips client-supplied values
@@ -52,12 +53,17 @@ var TrustedHeaders = []string{
 	HeaderAuthzScope,
 	HeaderAuthzPolicy,
 	HeaderCredentialID,
+	HeaderCaller,
+	HeaderOriginCaller,
 }
 
-// StripTrusted removes every TrustedHeaders entry from h.
+// StripTrusted removes the complete reserved namespace, including unknown future
+// identity headers and noncanonical casing. Request IDs remain caller-visible.
 func StripTrusted(h http.Header) {
-	for _, name := range TrustedHeaders {
-		h.Del(name)
+	for name := range h {
+		if strings.HasPrefix(strings.ToLower(name), "x-gateway-") {
+			delete(h, name)
+		}
 	}
 }
 
@@ -75,6 +81,7 @@ const HeaderCsarAuthorization = "X-Csar-Authorization"
 
 // Identity holds the request context forwarded by the gateway.
 type Identity struct {
+	Caller       *caller.Identity
 	RequestID    string
 	Subject      string
 	Tenant       string
@@ -108,10 +115,21 @@ func (id *Identity) SubjectUUID() (uuid.UUID, error) {
 
 type ctxKey struct{}
 
-// FromRequest extracts an Identity from HTTP request headers.
-// This is a pure parser — it does not verify the request source.
+// FromRequest is the compatibility parser. Malformed present caller metadata
+// returns an empty identity. Use FromRequestChecked to inspect the error.
+// Neither parser verifies the request source.
 func FromRequest(r *http.Request) Identity {
-	return Identity{
+	id, err := FromRequestChecked(r)
+	if err != nil {
+		return Identity{}
+	}
+	return id
+}
+
+// FromRequestChecked parses headers and rejects malformed present caller data.
+// A trusted transport is still required before relying on these assertions.
+func FromRequestChecked(r *http.Request) (Identity, error) {
+	id := Identity{
 		RequestID:    r.Header.Get(HeaderRequestID),
 		Subject:      r.Header.Get(HeaderSubject),
 		Tenant:       r.Header.Get(HeaderTenant),
@@ -122,17 +140,29 @@ func FromRequest(r *http.Request) Identity {
 		AuthzPolicy:  r.Header.Get(HeaderAuthzPolicy),
 		CredentialID: r.Header.Get(HeaderCredentialID),
 	}
+	var err error
+	id.Caller, err = CallerFromHeaders(r.Header)
+	return id, err
 }
 
 // FromContext retrieves the Identity stored by Middleware or TrustedMiddleware.
 func FromContext(ctx context.Context) (Identity, bool) {
 	id, ok := ctx.Value(ctxKey{}).(Identity)
-	return id, ok
+	return cloneIdentity(&id), ok
 }
 
 // NewContext returns a new context carrying the given Identity.
 func NewContext(ctx context.Context, id *Identity) context.Context {
-	return context.WithValue(ctx, ctxKey{}, *id)
+	return context.WithValue(ctx, ctxKey{}, cloneIdentity(id))
+}
+
+func cloneIdentity(id *Identity) Identity {
+	copyID := *id
+	if copyID.Caller != nil {
+		principal := *copyID.Caller
+		copyID.Caller = &principal
+	}
+	return copyID
 }
 
 // Middleware parses gateway headers and stores the resulting Identity
@@ -140,7 +170,11 @@ func NewContext(ctx context.Context, id *Identity) context.Context {
 // Use TrustedMiddleware when you need trust enforcement.
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := FromRequest(r)
+		id, err := FromRequestChecked(r)
+		if err != nil {
+			http.Error(w, "invalid gateway caller metadata", http.StatusBadRequest)
+			return
+		}
 		next.ServeHTTP(w, r.WithContext(NewContext(r.Context(), &id)))
 	})
 }
@@ -161,7 +195,11 @@ func TrustedMiddleware(verify TrustFunc) func(http.Handler) http.Handler {
 				http.Error(w, fmt.Sprintf("untrusted request: %v", err), http.StatusForbidden)
 				return
 			}
-			id := FromRequest(r)
+			id, err := FromRequestChecked(r)
+			if err != nil {
+				http.Error(w, "invalid gateway caller metadata", http.StatusBadRequest)
+				return
+			}
 			next.ServeHTTP(w, r.WithContext(NewContext(r.Context(), &id)))
 		})
 	}
