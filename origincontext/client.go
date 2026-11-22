@@ -23,6 +23,8 @@ type RootClientConfig struct {
 	HTTPClient *http.Client
 	// KeyFunc resolves already trusted issuer keys; callers must bound any IO.
 	KeyFunc jwtx.KeyFunc
+	// KeyFuncContext is preferred for resolvers that may perform network IO.
+	KeyFuncContext func(context.Context) jwtx.KeyFunc
 }
 
 // Proof contains a credential, not an audit/response DTO. Do not persist it.
@@ -38,11 +40,12 @@ type RootClient struct {
 	transport    *http.Transport
 	path, issuer string
 	keys         jwtx.KeyFunc
+	keysContext  func(context.Context) jwtx.KeyFunc
 }
 
 func NewRootClient(cfg RootClientConfig) (*RootClient, error) {
 	u, err := url.Parse(cfg.Endpoint)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" || u.Path == "" || cfg.Issuer == "" || cfg.KeyFunc == nil || cfg.HTTPClient == nil || cfg.HTTPClient.Jar != nil {
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" || u.Path == "" || cfg.Issuer == "" || (cfg.KeyFunc == nil) == (cfg.KeyFuncContext == nil) || cfg.HTTPClient == nil || cfg.HTTPClient.Jar != nil {
 		return nil, ErrInvalid
 	}
 	if u.RawPath != "" || path.Clean(u.Path) != u.Path || strings.HasPrefix(u.Path, "//") || strings.ContainsAny(u.Path, "\\\x00\r\n") {
@@ -66,7 +69,7 @@ func NewRootClient(cfg RootClientConfig) (*RootClient, error) {
 		transport.CloseIdleConnections()
 		return nil, ErrInvalid
 	}
-	return &RootClient{client: shared, transport: transport, path: u.EscapedPath(), issuer: cfg.Issuer, keys: cfg.KeyFunc}, nil
+	return &RootClient{client: shared, transport: transport, path: u.EscapedPath(), issuer: cfg.Issuer, keys: cfg.KeyFunc, keysContext: cfg.KeyFuncContext}, nil
 }
 
 func (c *RootClient) Close() {
@@ -84,6 +87,8 @@ func (c *RootClient) Issue(ctx context.Context, in *RootRequest) (*Proof, error)
 	request := *in
 	principal := *in.Caller
 	request.Caller = &principal
+	ctx, budgetCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer budgetCancel()
 	ctx, cancel := context.WithDeadline(ctx, request.SourceExpiresAt)
 	defer cancel()
 	response, callErr := csarclient.DoJSON[Response](ctx, c.client, csarclient.Request{Method: http.MethodPost, Path: c.path, Body: &request})
@@ -93,7 +98,14 @@ func (c *RootClient) Issue(ctx context.Context, in *RootRequest) (*Proof, error)
 	if err := ctx.Err(); err != nil {
 		return nil, errors.Join(ErrIssuerUnavailable, err)
 	}
-	claims, err := Verify(response.Token, c.keys, c.issuer, request.Receiver)
+	keys := c.keys
+	if c.keysContext != nil {
+		keys = c.keysContext(ctx)
+	}
+	claims, err := Verify(response.Token, keys, c.issuer, request.Receiver)
+	if contextErr := ctx.Err(); contextErr != nil {
+		return nil, errors.Join(ErrIssuerUnavailable, contextErr)
+	}
 	if err != nil || claims.Depth != 0 || *claims.Origin != principal || claims.Resource != request.Resource || claims.RequestHash != request.RequestHash || !claims.ExpiresAt.Equal(response.ExpiresAt) || response.ExpiresAt.After(request.SourceExpiresAt) {
 		return nil, ErrInvalid
 	}

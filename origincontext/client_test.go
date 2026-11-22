@@ -121,6 +121,20 @@ func TestRootClientMTLSBindingsAndFailureBounds(t *testing.T) {
 		}
 	}
 	mode.Store(5)
+	mode.Store(0)
+	contextClient, err := NewRootClient(RootClientConfig{Endpoint: server.URL + "/root", Issuer: "issuer", HTTPClient: httpClient, KeyFuncContext: func(ctx context.Context) jwtx.KeyFunc {
+		return func(_, _ string) (crypto.PublicKey, error) { <-ctx.Done(); return nil, ctx.Err() }
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer contextClient.Close()
+	lookupCtx, lookupCancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer lookupCancel()
+	if _, err := contextClient.Issue(lookupCtx, request); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("signature lookup ignored operation deadline", err)
+	}
+	mode.Store(5)
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 	defer cancel()
 	if _, err := client.Issue(ctx, request); !errors.Is(err, context.DeadlineExceeded) {
