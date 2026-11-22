@@ -49,9 +49,9 @@ func New(client redis.UniversalClient, prefix string, timeout time.Duration) (*L
 	bounded := false
 	switch c := client.(type) {
 	case *redis.Client:
-		bounded = c.Options().ContextTimeoutEnabled
+		bounded = c != nil && c.Options().ContextTimeoutEnabled
 	case *redis.ClusterClient:
-		bounded = c.Options().ContextTimeoutEnabled
+		bounded = c != nil && c.Options().ContextTimeoutEnabled
 	}
 	if !bounded {
 		return nil, ErrInvalid
@@ -106,10 +106,7 @@ end
 return {0,0}
 `)
 
-// Take charges every dimension or denies before changing any counters. Redis
-// failures, including uncertain network outcomes, fail closed. No application
-// retry or refund is inferred. Disable driver retries for single-charge attempts;
-// otherwise an uncertain driver replay may conservatively charge usage twice.
+// Validate permits config compilers to reject invalid policies without Redis IO.
 func Validate(request Request) error {
 	if !safeName(request.Policy) || request.Window < time.Second || request.Window > 24*time.Hour || request.Units <= 0 || request.Units > 1_000_000_000 || len(request.Limits) == 0 || len(request.Limits) > 8 {
 		return ErrInvalid
@@ -125,6 +122,9 @@ func Validate(request Request) error {
 	return nil
 }
 
+// Take charges every dimension or denies before changing any counters. Redis
+// uncertainty fails closed without inferred refunds or application retries.
+// Disable driver retries to avoid conservative duplicate charges after a replay.
 func (l *Limiter) Take(ctx context.Context, request Request) error {
 	if l == nil {
 		return ErrInvalid

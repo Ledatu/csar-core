@@ -86,6 +86,10 @@ func TestStableOwnerAndUnavailableFailClosed(t *testing.T) {
 }
 
 func TestInvalidStateCannotGrantUsage(t *testing.T) {
+	var absent *redis.Client
+	if _, err := New(absent, "test:", time.Second); !errors.Is(err, ErrInvalid) {
+		t.Fatal("typed nil client accepted")
+	}
 	store := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: store.Addr(), MaxRetries: -1, ContextTimeoutEnabled: true})
 	defer client.Close()
