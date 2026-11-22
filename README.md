@@ -8,7 +8,7 @@ Shared Go primitives for the csar service family. Provides pluggable config sour
 go get github.com/ledatu/csar-core
 ```
 
-Requires Go 1.25+.
+Requires Go 1.26+. CI and release builds use the patched Go 1.26.11 toolchain.
 
 ---
 

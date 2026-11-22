@@ -208,3 +208,53 @@ func TestJWKS_Marshal(t *testing.T) {
 		t.Fatalf("expected 1 key after roundtrip, got %d", len(roundtrip.Keys))
 	}
 }
+
+func TestJWKToPublicKeyECValidation(t *testing.T) {
+	for _, name := range []string{"P-256", "P-384", "P-521"} {
+		t.Run(name, func(t *testing.T) {
+			curve, err := ecCurve(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			private, err := ecdsa.GenerateKey(curve, rand.Reader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := private.PublicKey.Bytes()
+			if err != nil {
+				t.Fatal(err)
+			}
+			width := (len(raw) - 1) / 2
+			valid := JWK{Kty: "EC", Crv: name, X: base64.RawURLEncoding.EncodeToString(raw[1 : 1+width]), Y: base64.RawURLEncoding.EncodeToString(raw[1+width:])}
+			key, err := JWKToPublicKey(&valid)
+			if err != nil || !private.PublicKey.Equal(key) {
+				t.Fatal("valid EC JWK did not roundtrip", err)
+			}
+			for _, invalid := range []string{"missing x", "short x", "long y", "zero point", "out of range"} {
+				t.Run(invalid, func(t *testing.T) {
+					jwk := valid
+					switch invalid {
+					case "missing x":
+						jwk.X = ""
+					case "short x":
+						jwk.X = base64.RawURLEncoding.EncodeToString(raw[2 : 1+width])
+					case "long y":
+						jwk.Y = base64.RawURLEncoding.EncodeToString(make([]byte, width+1))
+					case "zero point":
+						jwk.X = base64.RawURLEncoding.EncodeToString(make([]byte, width))
+						jwk.Y = jwk.X
+					case "out of range":
+						coordinate := make([]byte, width)
+						for i := range coordinate {
+							coordinate[i] = 255
+						}
+						jwk.X = base64.RawURLEncoding.EncodeToString(coordinate)
+					}
+					if _, err := JWKToPublicKey(&jwk); err == nil {
+						t.Fatal("invalid EC JWK accepted")
+					}
+				})
+			}
+		})
+	}
+}
