@@ -6,11 +6,32 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/ledatu/csar-core/jwtx"
 )
+
+func TestTokenFailureDoesNotExposeIssuerBody(t *testing.T) {
+	const diagnostic = "private assertion diagnostic"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, diagnostic, http.StatusForbidden)
+	}))
+	defer server.Close()
+	keys, err := jwtx.GenerateKeyPair("EdDSA")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := New(&Config{STSEndpoint: server.URL, Audience: "api", ServiceName: "svc:reporting", AssertionAudience: "issuer", KeyPair: keys, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = source.Token(context.Background())
+	if err == nil || strings.Contains(err.Error(), diagnostic) || !strings.Contains(err.Error(), "403") {
+		t.Fatal("issuer body entered public error", err)
+	}
+}
 
 func TestTokenWaiterCanCancelWithoutInterruptingRefresh(t *testing.T) {
 	started, release := make(chan struct{}), make(chan struct{})

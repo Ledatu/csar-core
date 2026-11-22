@@ -152,12 +152,13 @@ func (ts *TokenSource) Token(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("stsclient: sts request: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		// Issuer response bodies may contain credentials or private diagnostics.
+		return "", fmt.Errorf("stsclient: sts status %d", resp.StatusCode)
+	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return "", fmt.Errorf("stsclient: read sts body: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("stsclient: sts status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	var tr tokenResponse
