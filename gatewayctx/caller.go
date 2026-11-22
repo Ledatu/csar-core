@@ -13,8 +13,7 @@ import (
 )
 
 const (
-	HeaderCaller = "X-Gateway-Caller"
-	// Reserved for verified origin propagation; parsing it is not supported yet.
+	HeaderCaller         = "X-Gateway-Caller"
 	HeaderOriginCaller   = "X-Gateway-Origin-Caller"
 	MaxCallerHeaderBytes = 4096
 )
@@ -36,12 +35,8 @@ func SetCaller(h http.Header, id *caller.Identity) error {
 	if validateCallerEnvelope(h, id) != nil {
 		return ErrInvalidCaller
 	}
-	body, err := json.Marshal(id)
+	value, err := encodeCaller(id)
 	if err != nil {
-		return ErrInvalidCaller
-	}
-	value := base64.RawURLEncoding.EncodeToString(body)
-	if len(value) > MaxCallerHeaderBytes {
 		return ErrInvalidCaller
 	}
 	h.Set(HeaderCaller, value)
@@ -58,6 +53,29 @@ func CallerFromHeaders(h http.Header) (*caller.Identity, error) {
 	if !present {
 		return nil, nil
 	}
+	id, err := decodeCaller(value)
+	if err != nil || validateCallerEnvelope(h, id) != nil {
+		return nil, ErrInvalidCaller
+	}
+	return id, nil
+}
+
+func encodeCaller(id *caller.Identity) (string, error) {
+	if id.Validate() != nil {
+		return "", ErrInvalidCaller
+	}
+	body, err := json.Marshal(id)
+	if err != nil {
+		return "", ErrInvalidCaller
+	}
+	value := base64.RawURLEncoding.EncodeToString(body)
+	if len(value) > MaxCallerHeaderBytes {
+		return "", ErrInvalidCaller
+	}
+	return value, nil
+}
+
+func decodeCaller(value string) (*caller.Identity, error) {
 	if value == "" || len(value) > MaxCallerHeaderBytes {
 		return nil, ErrInvalidCaller
 	}
@@ -69,7 +87,7 @@ func CallerFromHeaders(h http.Header) (*caller.Identity, error) {
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&id) != nil || decoder.Decode(new(any)) != io.EOF ||
-		validateCallerEnvelope(h, &id) != nil {
+		id.Validate() != nil {
 		return nil, ErrInvalidCaller
 	}
 	return &id, nil
