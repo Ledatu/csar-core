@@ -199,18 +199,39 @@ func cloneDate(date *jwt.NumericDate) *jwt.NumericDate {
 }
 
 type contextKey struct{}
+type verifiedContext struct {
+	claims *Claims
+	token  string
+}
 
 // WithVerified is for the gateway after signature and request-binding checks.
 func WithVerified(ctx context.Context, c *Claims) context.Context {
 	if c == nil {
 		return ctx
 	}
-	return context.WithValue(ctx, contextKey{}, clone(c))
+	return context.WithValue(ctx, contextKey{}, verifiedContext{claims: clone(c)})
 }
 func FromContext(ctx context.Context) (*Claims, bool) {
-	c, ok := ctx.Value(contextKey{}).(*Claims)
-	if !ok || c == nil {
+	c, ok := ctx.Value(contextKey{}).(verifiedContext)
+	if !ok || c.claims == nil {
 		return nil, false
 	}
-	return clone(c), true
+	return clone(c.claims), true
+}
+
+// WithVerifiedProof keeps the opaque credential paired with its verified claims
+// for gateway forwarding. Only an authenticator may establish this context.
+func WithVerifiedProof(ctx context.Context, p *Proof) context.Context {
+	if p == nil || p.Claims == nil {
+		return context.WithValue(ctx, contextKey{}, verifiedContext{})
+	}
+	return context.WithValue(ctx, contextKey{}, verifiedContext{claims: clone(p.Claims), token: p.Token})
+}
+
+func ProofFromContext(ctx context.Context) (*Proof, bool) {
+	c, ok := ctx.Value(contextKey{}).(verifiedContext)
+	if !ok || c.claims == nil || c.token == "" {
+		return nil, false
+	}
+	return &Proof{Token: c.token, Claims: clone(c.claims)}, true
 }

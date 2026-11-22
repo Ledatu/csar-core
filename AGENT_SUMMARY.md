@@ -19,6 +19,13 @@ service. See the OZ08 owner for durable cabinet cooldown policy.
 
 # csar-core Agent Summary
 
+gatewayctx.Origin forwards a separately owned original caller and canonical
+operation chain/expiry under the same trusted ingress boundary. It preserves the
+immediate Caller/Subject and shares their bounded codec; ambiguous partial origin
+headers fail closed. Raw proofs remain outside typed identity/audit DTOs. Gateway
+origincontext proof context pairs a verified token and owned claims atomically;
+replacing metadata alone clears the previous token. No forwarding activation.
+
 origincontext.RootClient is gateway-only dedicated HTTPS/mTLS root issuance. It
 reuses csarclient/clientx bounds and disables redirects/retries; response signature,
 caller/receiver/resource/request digest, root depth and source expiry are checked.

@@ -35,6 +35,26 @@ func TestSignedOriginBindingAndDelegationBounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	ctx := WithVerifiedProof(context.Background(), &Proof{Token: root.Token, Claims: parent})
+	ownedProof, ok := ProofFromContext(ctx)
+	if !ok || ownedProof.Token != root.Token {
+		t.Fatal("verified proof lost")
+	}
+	ownedProof.Claims.Origin.CallerID = "changed"
+	storedProof, _ := ProofFromContext(ctx)
+	if storedProof.Claims.Origin.CallerID != "agent:1" {
+		t.Fatal("proof context aliased")
+	}
+	if _, ok := ProofFromContext(WithVerified(ctx, parent)); ok {
+		t.Fatal("metadata replacement retained another proof")
+	}
+	cleared := WithVerifiedProof(ctx, nil)
+	if _, ok := ProofFromContext(cleared); ok {
+		t.Fatal("nil proof retained credential")
+	}
+	if _, ok := FromContext(cleared); ok {
+		t.Fatal("nil proof retained claims")
+	}
 	if !parent.ExpiresAt.Before(in.SourceExpiresAt.Add(time.Nanosecond)) || parent.CheckHop("reporting", "tenant:1", hash) == nil {
 		t.Fatal("root used as service hop or source expiry extended")
 	}

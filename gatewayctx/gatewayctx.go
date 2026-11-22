@@ -55,6 +55,9 @@ var TrustedHeaders = []string{
 	HeaderCredentialID,
 	HeaderCaller,
 	HeaderOriginCaller,
+	HeaderOperationID,
+	HeaderParentOperationID,
+	HeaderOriginExpiresAt,
 }
 
 // StripTrusted removes the complete reserved namespace, including unknown future
@@ -81,6 +84,7 @@ const HeaderCsarAuthorization = "X-Csar-Authorization"
 
 // Identity holds the request context forwarded by the gateway.
 type Identity struct {
+	Origin       *Origin
 	Caller       *caller.Identity
 	RequestID    string
 	Subject      string
@@ -142,6 +146,9 @@ func FromRequestChecked(r *http.Request) (Identity, error) {
 	}
 	var err error
 	id.Caller, err = CallerFromHeaders(r.Header)
+	if err == nil {
+		id.Origin, err = OriginFromHeaders(r.Header)
+	}
 	return id, err
 }
 
@@ -158,6 +165,7 @@ func NewContext(ctx context.Context, id *Identity) context.Context {
 
 func cloneIdentity(id *Identity) Identity {
 	copyID := *id
+	copyID.Origin = cloneOrigin(id.Origin)
 	if copyID.Caller != nil {
 		principal := *copyID.Caller
 		copyID.Caller = &principal
