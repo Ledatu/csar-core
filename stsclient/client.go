@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -63,7 +62,7 @@ type TokenSource struct {
 	client *http.Client
 	logger *slog.Logger
 
-	mu        sync.Mutex
+	gate      chan struct{}
 	token     string
 	expiry    time.Time
 	assertTTL time.Duration
@@ -102,6 +101,7 @@ func New(cfg *Config) (*TokenSource, error) {
 		log = slog.Default()
 	}
 	return &TokenSource{
+		gate:      make(chan struct{}, 1),
 		cfg:       *cfg,
 		client:    c,
 		logger:    log,
@@ -117,8 +117,15 @@ type tokenResponse struct {
 
 // Token returns a valid Bearer access token, exchanging a fresh assertion when needed.
 func (ts *TokenSource) Token(ctx context.Context) (string, error) {
-	ts.mu.Lock()
-	defer ts.mu.Unlock()
+	select {
+	case ts.gate <- struct{}{}:
+		defer func() { <-ts.gate }()
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 
 	if ts.token != "" && time.Now().Before(ts.expiry) {
 		return ts.token, nil
@@ -145,12 +152,13 @@ func (ts *TokenSource) Token(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("stsclient: sts request: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		// Issuer response bodies may contain credentials or private diagnostics.
+		return "", fmt.Errorf("stsclient: sts status %d", resp.StatusCode)
+	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return "", fmt.Errorf("stsclient: read sts body: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("stsclient: sts status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	var tr tokenResponse

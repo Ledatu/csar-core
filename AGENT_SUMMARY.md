@@ -19,6 +19,15 @@ service. See the OZ08 owner for durable cabinet cooldown policy.
 
 # csar-core Agent Summary
 
+origincontext.DelegateClient reuses an existing authenticated STS router client
+for the Authn delegation route. WithGatewayParent adopts an opaque parent only
+from trusted gateway ingress; every dispatch obtains a child bound to the actual
+method/URI/body and receiver. Target/issuer clients support separate audiences;
+STS remains shared and independent per client. Refresh waiters honor cancellation
+without interrupting an active exchange. Parent expiry
+bounds response IO; redirects/retries and off-router targets fail closed. It adds
+no service activation, backend access-token verifier or direct Authn connection.
+
 gatewayctx.Origin forwards a separately owned original caller and canonical
 operation chain/expiry under the same trusted ingress boundary. It preserves the
 immediate Caller/Subject and shares their bounded codec; ambiguous partial origin
