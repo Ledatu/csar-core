@@ -150,11 +150,53 @@ func TestDelegationUsesPerRequestProofAndSharedSTS(t *testing.T) {
 	}
 	fail.Store(true)
 	req, _ = http.NewRequestWithContext(parentContext("agent"), "GET", server.URL+"/read", nil)
+	req.Host = "other.invalid"
+	if _, err := client.Do(req); !errors.Is(err, ErrInvalid) {
+		t.Fatal("HTTP Host bypassed router binding", err)
+	}
+	req, _ = http.NewRequestWithContext(parentContext("agent"), "GET", server.URL+"/read", nil)
 	if _, err := client.Do(req); !errors.Is(err, ErrIssuerUnavailable) || strings.Contains(err.Error(), "private issuer") {
 		t.Fatal("issuer failure not bounded/redacted", err)
 	}
 	if reads.Load() != 2 || delegations.Load() != 3 {
 		t.Fatal("issuer failure dispatched/retried")
+	}
+}
+
+func TestDelegatedResponseHonorsShorterChildExpiry(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/svc/authn/origin-context/delegate" {
+			_ = json.NewEncoder(w).Encode(Response{Token: "opaque-child", ExpiresAt: time.Now().Add(150 * time.Millisecond)})
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	delegate, err := NewDelegateClient(server.URL, server.Client(), server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := delegate.Client("svc:owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	ctx = context.WithValue(ctx, gatewayParentKey{}, gatewayParent{token: "parent", resource: "wildberries:cabinet", expires: time.Now().Add(time.Minute)})
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/read", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	response, err := client.Do(req)
+	if err == nil {
+		_, err = io.ReadAll(response.Body)
+		_ = response.Body.Close()
+	}
+	if !errors.Is(err, context.DeadlineExceeded) || time.Since(started) > time.Second {
+		t.Fatal("response outlived child proof", err)
 	}
 }
 

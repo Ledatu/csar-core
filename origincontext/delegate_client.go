@@ -106,7 +106,7 @@ func (t *delegateTransport) RoundTrip(req *http.Request) (resp *http.Response, e
 	p, ok := req.Context().Value(gatewayParentKey{}).(gatewayParent)
 	u := req.URL
 	prefix := strings.TrimRight(t.client.base.Path, "/") + "/"
-	if !ok || !time.Now().Before(p.expires) || u == nil || u.Scheme != t.client.base.Scheme || !strings.EqualFold(u.Host, t.client.base.Host) || u.User != nil || u.Opaque != "" || u.Fragment != "" || req.RequestURI != "" || !strings.HasPrefix(u.Path, prefix) {
+	if !ok || !time.Now().Before(p.expires) || u == nil || u.Scheme != t.client.base.Scheme || !strings.EqualFold(u.Host, t.client.base.Host) || req.Host != "" && !strings.EqualFold(req.Host, u.Host) || u.User != nil || u.Opaque != "" || u.Fragment != "" || req.RequestURI != "" || !strings.HasPrefix(u.Path, prefix) {
 		return nil, ErrInvalid
 	}
 	for name := range req.Header {
@@ -133,15 +133,23 @@ func (t *delegateTransport) RoundTrip(req *http.Request) (resp *http.Response, e
 		return nil, ErrInvalid
 	}
 	out.Header.Set(HeaderAuthorization, "Bearer "+result.Token)
+	childContext, childCancel := context.WithDeadline(ctx, result.ExpiresAt)
+	defer func() {
+		if err != nil {
+			childCancel()
+		}
+	}()
+	out = out.WithContext(childContext)
+	closeContext := func() { childCancel(); cancel() }
 	handedOff = true
 	resp, err = t.base.RoundTrip(out)
 	if err != nil {
 		return nil, err
 	}
 	if resp == nil || resp.Body == nil {
-		cancel()
+		closeContext()
 	} else {
-		resp.Body = &deadlineBody{ReadCloser: resp.Body, cancel: cancel}
+		resp.Body = &deadlineBody{ReadCloser: resp.Body, cancel: closeContext}
 	}
 	return resp, nil
 }
