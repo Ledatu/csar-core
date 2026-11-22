@@ -24,22 +24,28 @@ func RequestHash(r *http.Request) (string, error) {
 	if r == nil || r.URL == nil {
 		return "", ErrInvalid
 	}
+	interpretation := make([]string, 0, 2)
 	for _, target := range []string{"Content-Type", "Content-Encoding"} {
 		count := 0
+		value := ""
 		for name, values := range r.Header {
 			if strings.EqualFold(name, target) {
 				count += len(values)
+				if len(values) == 1 {
+					value = values[0]
+				}
 			}
 		}
 		if count > 1 {
 			return "", ErrInvalid
 		}
+		interpretation = append(interpretation, value)
 	}
 	uri := r.RequestURI
 	if uri == "" {
 		uri = r.URL.RequestURI()
 	}
-	if len(uri) > 8192 || len(r.Header.Get("Content-Type")) > 512 || len(r.Header.Get("Content-Encoding")) > 128 {
+	if len(uri) > 8192 || len(interpretation[0]) > 512 || len(interpretation[1]) > 128 {
 		return "", ErrInvalid
 	}
 	switch r.Method {
@@ -58,7 +64,7 @@ func RequestHash(r *http.Request) (string, error) {
 		}
 	}
 	digest := sha256.Sum256(body)
-	fields := []string{r.Method, uri, r.Header.Get("Content-Type"), r.Header.Get("Content-Encoding"), hex.EncodeToString(digest[:])}
+	fields := []string{r.Method, uri, interpretation[0], interpretation[1], hex.EncodeToString(digest[:])}
 	encoded, err := json.Marshal(fields)
 	if err != nil {
 		return "", ErrInvalid

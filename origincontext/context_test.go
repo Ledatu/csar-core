@@ -122,4 +122,9 @@ func TestRequestHashPreservesBodyAndOriginalTarget(t *testing.T) {
 	if _, err := RequestHash(x); err == nil {
 		t.Fatal("ambiguous interpretation accepted")
 	}
+	x = httptest.NewRequest(http.MethodPost, "/svc/report?store=a", strings.NewReader(`{"days":7}`))
+	x.Header["content-type"] = []string{"application/json"}
+	if h, err := RequestHash(x); err != nil || h != before {
+		t.Fatal("header casing changed request digest", err)
+	}
 }
