@@ -1,3 +1,11 @@
+## Non-replayable CSAR request bodies
+
+`csarclient` clears `GetBody` when `ReplaySafe` is false. A caller idempotency
+header cannot grant implicit net/http body replay after a reused connection
+closes. Reviewed replay-safe reads retain reconstruction and existing SDK/STS
+policy. A real connection-loss regression covers the write path; downstream
+router/Authn/Authz build/tests pass. No service/router activation is implied.
+
 ## Complete JSON documents (November20)
 
 httpx.ReadJSON now requires EOF after the first decoded value. A second decode

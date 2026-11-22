@@ -112,6 +112,12 @@ func (c *Client) build(ctx context.Context, r Request, payload []byte) (*http.Re
 	if r.Body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	if !r.ReplaySafe {
+		// A caller-supplied idempotency header can make net/http retry a
+		// reused connection. Only the reviewed replay policy may permit body
+		// recreation; disabling SDK/STS retry loops alone is insufficient.
+		req.GetBody = nil
+	}
 	return req, nil
 }
 
