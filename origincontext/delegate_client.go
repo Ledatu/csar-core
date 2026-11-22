@@ -30,7 +30,7 @@ func WithGatewayParent(ctx context.Context, incoming *http.Request) (context.Con
 		return nil, ErrInvalid
 	}
 	id, err := gatewayctx.FromRequestChecked(incoming)
-	if err != nil || id.Origin == nil || !time.Now().Before(id.Origin.ExpiresAt) || !caller.ValidReference(id.Tenant) {
+	if err != nil || id.Origin == nil || !time.Now().Before(id.Origin.ExpiresAt) || id.Tenant == "" || !caller.ValidReference(id.Tenant) {
 		return nil, ErrInvalid
 	}
 	var values []string
@@ -73,7 +73,7 @@ func NewDelegateClient(routerBaseURL string, authenticated *http.Client) (*Deleg
 // bound to the actual method/URI/body; missing or expired parents fail closed.
 // Redirects and automatic STS router retries are disabled for these requests.
 func (c *DelegateClient) Client(receiver string) (*http.Client, error) {
-	if c == nil || !caller.ValidReference(receiver) {
+	if c == nil || receiver == "" || !caller.ValidReference(receiver) {
 		return nil, ErrInvalid
 	}
 	client := *c.http
