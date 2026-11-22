@@ -19,6 +19,14 @@ service. See the OZ08 owner for durable cabinet cooldown policy.
 
 # csar-core Agent Summary
 
+W2 origincontext defines separate attribution JWTs (never access tokens), with
+issuer/receiver/purpose, resource and original request digest bindings, bounded
+60-second lifetime, depth four and child expiry no later than its parent. Root
+issuance requires an independently verified gateway adapter; the package itself
+adds no HTTP endpoint, permissions or runtime activation. Verifiers must reject
+the reserved token_use on access-token paths before any issuer is activated.
+authntokens also carries optional session expiry for bounded validator caches.
+
 W2 gatewayctx supports bounded optional caller metadata tied to the asserted
 subject/credential, with owned context copies and checked middleware parsing.
 The full X-Gateway-* namespace is stripped, including reserved origin headers.

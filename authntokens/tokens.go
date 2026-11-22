@@ -9,9 +9,10 @@ import (
 )
 
 const (
-	ReasonMissingClaim   = "missing_claim"
-	ReasonUnknownProfile = "unknown_profile"
-	ReasonSigningFailed  = "signing_failed"
+	HeaderSessionExpiresAt = "X-Authn-Session-Expires-At"
+	ReasonMissingClaim     = "missing_claim"
+	ReasonUnknownProfile   = "unknown_profile"
+	ReasonSigningFailed    = "signing_failed"
 )
 
 // IssueTokenRequest asks csar-authn to mint a named route token profile for the
@@ -41,8 +42,9 @@ type IssueTokenError struct {
 
 // ValidateResponse is returned by POST /auth/validate for valid sessions.
 type ValidateResponse struct {
-	Identity *caller.Identity  `json:"identity,omitempty"`
-	Headers  map[string]string `json:"headers,omitempty"`
-	Tokens   []IssuedToken     `json:"tokens,omitempty"`
-	Errors   []IssueTokenError `json:"errors,omitempty"`
+	ExpiresAt time.Time         `json:"expires_at,omitzero"`
+	Identity  *caller.Identity  `json:"identity,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty"`
+	Tokens    []IssuedToken     `json:"tokens,omitempty"`
+	Errors    []IssueTokenError `json:"errors,omitempty"`
 }
