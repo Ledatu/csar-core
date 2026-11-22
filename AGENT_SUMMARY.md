@@ -19,6 +19,12 @@ service. See the OZ08 owner for durable cabinet cooldown policy.
 
 # csar-core Agent Summary
 
+W2 gatewayctx supports bounded optional caller metadata tied to the asserted
+subject/credential, with owned context copies and checked middleware parsing.
+The full X-Gateway-* namespace is stripped, including reserved origin headers.
+Parsing establishes no trust or permission; mTLS/network isolation is required.
+Signed origin acceptance and producer activation are not included.
+
 Audit events optionally carry caller/origin and operation/trace context. Owned
 cloning and JSON/protobuf bindings preserve it; legacy omitted fields retain
 their previous JSON bytes. EventFromProto is the common validated receiver
