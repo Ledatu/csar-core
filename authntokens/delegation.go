@@ -1,6 +1,10 @@
 package authntokens
 
-import "time"
+import (
+	"time"
+
+	"github.com/ledatu/csar-core/caller"
+)
 
 // The purpose determines which credential the issuer may consume and which
 // authority a successful response conveys. Each audience has its own issuer policy.
@@ -28,14 +32,15 @@ type DelegationRequest struct {
 // Only exchange returns a fresh proof. Only resource consumption returns a
 // resource ID. Exchange may supply a default tenant for a single-resource grant.
 type DelegationResult struct {
-	Active         bool      `json:"active"`
-	Purpose        string    `json:"purpose,omitempty"`
-	Audience       string    `json:"audience,omitempty"`
-	Scope          string    `json:"scope,omitempty"`
-	Subject        string    `json:"subject,omitempty"`
-	CredentialID   string    `json:"credential_id,omitempty"`
-	ExpiresAt      time.Time `json:"expires_at,omitzero"`
-	ResourceID     string    `json:"resource_id,omitempty"`
-	Tenant         string    `json:"tenant,omitempty"`
-	DelegatedToken string    `json:"delegated_token,omitempty"`
+	Identity       *caller.Identity `json:"identity,omitempty"`
+	Active         bool             `json:"active"`
+	Purpose        string           `json:"purpose,omitempty"`
+	Audience       string           `json:"audience,omitempty"`
+	Scope          string           `json:"scope,omitempty"`
+	Subject        string           `json:"subject,omitempty"`
+	CredentialID   string           `json:"credential_id,omitempty"`
+	ExpiresAt      time.Time        `json:"expires_at,omitzero"`
+	ResourceID     string           `json:"resource_id,omitempty"`
+	Tenant         string           `json:"tenant,omitempty"`
+	DelegatedToken string           `json:"delegated_token,omitempty"`
 }
