@@ -83,7 +83,7 @@ func (id *Identity) Validate() error {
 		{"effective_subject", id.EffectiveSubject}, {"credential_id", id.CredentialID},
 		{"client_id", id.ClientID}, {"connection_id", id.ConnectionID},
 	} {
-		if !validReference(field.value) {
+		if !ValidReference(field.value) {
 			return fmt.Errorf("caller: invalid %s", field.name)
 		}
 	}
@@ -102,7 +102,9 @@ func (id *Identity) ValidateBinding(subject, credentialID string) error {
 	return nil
 }
 
-func validReference(value string) bool {
+// ValidReference checks a bounded safe reference, including an absent optional
+// reference. It does not authenticate its owner or accept credential values.
+func ValidReference(value string) bool {
 	if len(value) > 256 {
 		return false
 	}
