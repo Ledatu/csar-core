@@ -290,3 +290,7 @@ to authorization tenants.
 The universal csarclient also offers opt-in RetryHTTP429 for replay-safe reads
 within an explicit short WaitBudget/MaxRetries. Default worker requests and
 non-replayable mutations remain single-attempt.
+
+STS and router HTTP clients reject all redirects before another request can carry
+a signed assertion or service Bearer outside its configured endpoint. Universal
+csarclient remains the bounded request layer for new owner adapters.
