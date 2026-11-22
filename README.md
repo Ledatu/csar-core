@@ -119,6 +119,21 @@ client, err := stsclient.NewRouterClient(&stsclient.ServiceAuthConfig{
 
 ---
 
+### `origincontext` — Per-request service delegation
+
+`NewDelegateClient(router.BaseURL, router.Client)` reuses an existing STS router
+client. `Client("svc:owner")` returns a receiver-bound HTTP client; adopt a parent
+with `WithGatewayParent(ctx, incoming)` only after enforcing trusted gateway
+ingress. Use that context on the outgoing request. Authn validates the opaque
+parent and returns a child bound to the actual request; CSAR validates the child
+alongside the unchanged service STS authority. Backend services do not validate
+access JWTs or contact Authn directly.
+
+Each dispatch gets its own child. Missing/expired parents and off-router targets
+fail closed. Parent expiry bounds response IO; close response bodies. Redirects
+and automatic router retries are disabled. Proofs must never enter logs, audit
+DTOs, shared caches or background jobs; long jobs need freshly authorized context.
+
 ### `s3store` — S3-compatible object storage client
 
 Supports Yandex Cloud Object Storage (and any S3-compatible backend). Two auth modes: static AWS Sig V4 keys, or Yandex Cloud IAM tokens.
