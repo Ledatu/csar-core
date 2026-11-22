@@ -59,7 +59,8 @@ func ReadJSON(r *http.Request, v any) error {
 		return csarerrors.Validation("invalid JSON: %v", err)
 	}
 
-	if dec.More() {
+	var trailing any
+	if err := dec.Decode(&trailing); err != io.EOF {
 		return csarerrors.Validation("request body must contain a single JSON object")
 	}
 	return nil
