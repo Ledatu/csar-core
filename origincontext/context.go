@@ -223,7 +223,7 @@ func FromContext(ctx context.Context) (*Claims, bool) {
 // for gateway forwarding. Only an authenticator may establish this context.
 func WithVerifiedProof(ctx context.Context, p *Proof) context.Context {
 	if p == nil || p.Claims == nil {
-		return ctx
+		return context.WithValue(ctx, contextKey{}, verifiedContext{})
 	}
 	return context.WithValue(ctx, contextKey{}, verifiedContext{claims: clone(p.Claims), token: p.Token})
 }
