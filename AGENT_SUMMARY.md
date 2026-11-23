@@ -27,6 +27,12 @@ service. See the OZ08 owner for durable cabinet cooldown policy.
 
 # csar-core Agent Summary
 
+`grpcserver.Shutdown` bounds graceful gRPC drain by the caller's context and
+forces transport closure on expiry. Services own long-lived subscription drain,
+resource lifetime and the overall deadline; cancellation-ignoring handlers can
+outlive forced stop. Real gRPC tests cover successful in-flight completion and
+deadline cancellation. No production policy or infrastructure settings change.
+
 origincontext.DelegateClient reuses an existing authenticated STS router client
 for the Authn delegation route. WithGatewayParent adopts an opaque parent only
 from trusted gateway ingress; every dispatch obtains a child bound to the actual
