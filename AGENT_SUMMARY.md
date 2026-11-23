@@ -1,3 +1,11 @@
+## Explicit Authn issuer trust configuration
+
+`authnconfig.Config.OriginRouterCAFile` permits a manifest to opt into the existing
+dedicated origin issuer without changing a secret-bearing environment file. It
+requires a verified client TLS listener; runtime registration still verifies the
+separate CA and exact router leaf identity. Empty remains disabled. Services own
+startup wiring and restart-only lifecycle; this field grants no access authority.
+
 ## Explicit audit request attribution
 
 `audit.WithRequestContext` enriches an owned event from already trusted gateway
