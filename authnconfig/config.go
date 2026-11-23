@@ -38,6 +38,7 @@ type Config struct {
 	Authz                  AuthzConfig                    `yaml:"authz,omitempty"`
 	Audit                  stsclient.ServiceAuthConfig    `yaml:"audit,omitempty"`
 	AuditOutboxEnabled     bool                           `yaml:"audit_outbox_enabled"`
+	OriginRouterCAFile     string                         `yaml:"origin_router_ca_file,omitempty"`
 	BotVerify              *BotVerifyConfig               `yaml:"bot_verify,omitempty"`
 	EmailOTP               *EmailOTPConfig                `yaml:"email_otp,omitempty"`
 	LegacyLogin            LegacyLoginConfig              `yaml:"legacy_login,omitempty"`
@@ -405,6 +406,14 @@ func (c *Config) validate() error {
 	}
 	if c.AuditOutboxEnabled && (c.Database.Driver != "postgres" || !c.Audit.IsConfigured()) {
 		return fmt.Errorf("audit_outbox_enabled requires PostgreSQL and configured audit STS transport")
+	}
+	if c.OriginRouterCAFile != "" {
+		if strings.TrimSpace(c.OriginRouterCAFile) != c.OriginRouterCAFile {
+			return fmt.Errorf("origin_router_ca_file must name a CA file")
+		}
+		if !c.TLS.IsEnabled() || c.TLS.ClientCAFile == "" {
+			return fmt.Errorf("origin_router_ca_file requires a verified client TLS listener")
+		}
 	}
 	if err := c.Audit.Validate(); err != nil {
 		return err
