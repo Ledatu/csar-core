@@ -1,3 +1,13 @@
+## Explicit audit request attribution
+
+`audit.WithRequestContext` enriches an owned event from already trusted gateway
+context and a valid OTel span. It preserves explicit fields and legacy Actor /
+unknown identities, and never infers caller kind from a transport or label. Origin
+fields are adopted only for the same caller/operation, avoiding mixed chains.
+It does not authenticate headers or change existing Record/outbox behavior;
+producers explicitly opt in after validating their ingress/session provenance.
+Prepare once afterwards and retain that event across retries.
+
 ## Non-replayable CSAR request bodies
 
 `csarclient` clears `GetBody` when `ReplaySafe` is false. A caller idempotency
