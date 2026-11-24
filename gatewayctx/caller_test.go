@@ -114,3 +114,18 @@ func TestReservedGatewayNamespaceCannotSurviveStripping(t *testing.T) {
 		t.Fatal("invalid replacement retained a caller assertion")
 	}
 }
+func TestClientMetadataURLFitsCallerEnvelope(t *testing.T) {
+	r := boundCallerRequest(t)
+	id, err := CallerFromHeaders(r.Header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id.ClientID = "https://client.example/" + strings.Repeat("a", 990)
+	if err := SetCaller(r.Header, id); err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := CallerFromHeaders(r.Header)
+	if err != nil || decoded.ClientID != id.ClientID {
+		t.Fatal("metadata identifier did not survive the gateway envelope", err)
+	}
+}

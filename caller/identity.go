@@ -2,7 +2,11 @@
 // validation does not authenticate a token or authorize a request.
 package caller
 
-import "fmt"
+import (
+	"fmt"
+	"net/url"
+	"strings"
+)
 
 const Version = 1
 
@@ -81,13 +85,38 @@ func (id *Identity) Validate() error {
 	for _, field := range []struct{ name, value string }{
 		{"caller_id", id.CallerID}, {"owner_subject", id.OwnerSubject},
 		{"effective_subject", id.EffectiveSubject}, {"credential_id", id.CredentialID},
-		{"client_id", id.ClientID}, {"connection_id", id.ConnectionID},
+		{"connection_id", id.ConnectionID},
 	} {
 		if !ValidReference(field.value) {
 			return fmt.Errorf("caller: invalid %s", field.name)
 		}
 	}
+	if !ValidClientID(id.ClientID) {
+		return fmt.Errorf("caller: invalid client_id")
+	}
 	return nil
+}
+
+// ValidClientID accepts legacy references and bounded public HTTPS identifiers
+// used by OAuth client metadata documents. This is only an attribution shape
+// check: issuers separately validate metadata, redirects and client policy.
+// Query strings are excluded so credential-like URL parameters are not copied
+// into audit. Other identity references keep their original 256-byte contract.
+func ValidClientID(value string) bool {
+	if !strings.HasPrefix(value, "https://") {
+		return ValidReference(value)
+	}
+	if len(value) > 1024 {
+		return false
+	}
+	for _, c := range value {
+		if c < 33 || c > 126 {
+			return false
+		}
+	}
+	u, err := url.Parse(value)
+	return err == nil && u.Hostname() != "" && u.User == nil && u.Path != "" &&
+		u.RawQuery == "" && !u.ForceQuery && u.Fragment == "" && !strings.Contains(value, "#")
 }
 
 // ValidateBinding additionally checks the authenticated envelope. The caller
