@@ -82,6 +82,7 @@ var nonPublicNetworks = []netip.Prefix{
 	netip.MustParsePrefix("198.51.100.0/24"), netip.MustParsePrefix("203.0.113.0/24"),
 	netip.MustParsePrefix("240.0.0.0/4"), netip.MustParsePrefix("2001::/23"),
 	netip.MustParsePrefix("2001:db8::/32"), netip.MustParsePrefix("2002::/16"),
+	netip.MustParsePrefix("3fff::/20"),
 }
 
 func publicIP(addr netip.Addr) bool {

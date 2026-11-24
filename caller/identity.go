@@ -3,6 +3,7 @@
 package caller
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -103,10 +104,10 @@ func (id *Identity) Validate() error {
 // Query strings are excluded so credential-like URL parameters are not copied
 // into audit. Other identity references keep their original 256-byte contract.
 func ValidClientID(value string) bool {
-	if !strings.HasPrefix(value, "https://") {
+	if !strings.Contains(value, "://") {
 		return ValidReference(value)
 	}
-	if len(value) > 1024 {
+	if len(value) > 1024 || !strings.HasPrefix(value, "https://") {
 		return false
 	}
 	for _, c := range value {
@@ -115,7 +116,10 @@ func ValidClientID(value string) bool {
 		}
 	}
 	u, err := url.Parse(value)
-	return err == nil && u.Hostname() != "" && u.User == nil && u.Path != "" &&
+	// JSON escapes HTML-sensitive characters even inside base64 gateway headers.
+	// Bound that representation too, so accepted identifiers fit the envelope.
+	encoded, encodeErr := json.Marshal(value)
+	return err == nil && encodeErr == nil && len(encoded) <= 1026 && u.Hostname() != "" && u.User == nil && u.Path != "" &&
 		u.RawQuery == "" && !u.ForceQuery && u.Fragment == "" && !strings.Contains(value, "#")
 }
 
