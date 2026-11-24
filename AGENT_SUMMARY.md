@@ -318,3 +318,16 @@ non-replayable mutations remain single-attempt.
 STS and router HTTP clients reject all redirects before another request can carry
 a signed assertion or service Bearer outside its configured endpoint. Universal
 csarclient remains the bounded request layer for new owner adapters.
+## Public HTTPS retrieval
+
+`httpx/clientx.NewPublicHTTPClient` owns shared proxy-free, redirect-free HTTPS
+transport for untrusted external endpoints. Every DNS result must be public;
+the socket dials the checked IP while TLS authenticates the original hostname.
+Private, special-use, translation and mixed public/private answers fail closed.
+Callers own response-byte limits, admission and metadata/cache policy. Tokenmint
+reuses this client unless its existing explicit AllowPrivate mode is selected.
+No runtime configuration or network policy is activated by this library change.
+`caller.ValidClientID` additionally accepts bounded HTTPS metadata-document URLs
+without userinfo, queries or fragments; other identity references retain their
+existing bound. Receivers need this Core version before enabling URL identifiers
+that exceed the legacy reference syntax. Existing safe-reference IDs still pass.

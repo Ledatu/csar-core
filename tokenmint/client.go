@@ -79,31 +79,10 @@ func (e *upstreamError) Is(target error) bool {
 //     hostname, which is what makes DNS rebinding ineffective. It runs on every
 //     dial rather than once at startup.
 func newHTTPClient(cfg *Config, timeout time.Duration) *http.Client {
-	dialer := &net.Dialer{Timeout: timeout, KeepAlive: 30 * time.Second}
-
-	dial := func(ctx context.Context, network, addr string) (net.Conn, error) {
-		host, port, err := net.SplitHostPort(addr)
-		if err != nil {
-			return nil, fmt.Errorf("tokenmint: invalid address %q: %w", addr, err)
-		}
-		if cfg.AllowPrivate {
-			return dialer.DialContext(ctx, network, addr)
-		}
-
-		ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-		if err != nil {
-			return nil, fmt.Errorf("tokenmint: resolve %q: %w", host, err)
-		}
-		if len(ips) == 0 {
-			return nil, fmt.Errorf("tokenmint: no addresses for %q", host)
-		}
-		for _, ipAddr := range ips {
-			if err := clientx.CheckInternalIP(ipAddr.IP, clientx.AllInternalIPClasses()); err != nil {
-				return nil, fmt.Errorf("tokenmint: refusing to dial %q: %w", host, err)
-			}
-		}
-		return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
+	if !cfg.AllowPrivate {
+		return clientx.NewPublicHTTPClient(timeout)
 	}
+	dialer := &net.Dialer{Timeout: timeout, KeepAlive: 30 * time.Second}
 
 	return &http.Client{
 		Timeout: timeout,
@@ -112,7 +91,7 @@ func newHTTPClient(cfg *Config, timeout time.Duration) *http.Client {
 		},
 		Transport: &http.Transport{
 			Proxy:                 nil,
-			DialContext:           dial,
+			DialContext:           dialer.DialContext,
 			TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
 			ForceAttemptHTTP2:     true,
 			MaxIdleConnsPerHost:   4,

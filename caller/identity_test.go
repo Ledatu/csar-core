@@ -73,3 +73,15 @@ func TestRejectMalformedIdentityWithoutEchoingValues(t *testing.T) {
 		})
 	}
 }
+func TestClientMetadataIdentifierShape(t *testing.T) {
+	for _, value := range []string{"", "codex", "https://client.example/oauth/client%20metadata.json", "https://client.example/" + strings.Repeat("a", 600)} {
+		if !ValidClientID(value) {
+			t.Errorf("rejected client identifier: %s", value)
+		}
+	}
+	for _, value := range []string{"https://client.example/a?token=secret", "https://user:secret@client.example/a", "HTTPS://user:secret@client.example/a", "http://client.example/a", "https://client.example/" + strings.Repeat("&", 300), "https://client.example/a#part", "https://client.example/\nclient", "https://client.example/" + strings.Repeat("a", 1024)} {
+		if ValidClientID(value) {
+			t.Error("accepted unsafe client identifier")
+		}
+	}
+}
