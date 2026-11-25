@@ -1,3 +1,18 @@
+## Generic credential profile declarations (U02a, source only)
+
+`authnconfig.Config.Credentials` is an optional versioned declaration: public
+HTTPS URLs, exact mutation origins, secure consent cookie, dedicated feature CA/
+leaf-CN references, audience/scope/namespace profiles and per-service inspect/
+evaluate capabilities. Permission policies remain Authz-owned references.
+Omission preserves all current defaults; `enabled: true` is rejected until
+receiver integration exists. Disabled declarations are fully validated.
+`configutil.UnmarshalYAMLWithEnvStrictSections` scopes known-field validation to
+new blocks, rejects null/alias/merge/duplicate ambiguity and multiple documents,
+and preserves typed, injection-safe environment expansion. Other existing field
+schemas remain unchanged. Runtime certificate verification, session/CSRF/owner
+checks and startup/reload enforcement remain with the later service integration.
+The new collection checks do not activate issuers or alter current CA trust.
+
 ## Universal resource consent contracts (U01, source only)
 
 `authntokens.ResourceRef` separates namespace and opaque literal ID;

@@ -80,7 +80,7 @@ func (g *GrantConstraints) Validate() error {
 	if g == nil || g.Version != ConstraintsVersion || !ValidProfileID(g.ProfileID) || g.ProfileRevision == 0 || !ValidAudience(g.Audience) {
 		return fmt.Errorf("authntokens: invalid consent profile binding")
 	}
-	if !validSet(g.Scopes, MaxScopes, ValidScope) || !validSet(g.Namespaces, MaxNamespaces, ValidNamespace) {
+	if !ValidScopes(g.Scopes) || !ValidNamespaces(g.Namespaces) {
 		return fmt.Errorf("authntokens: invalid consent scopes or namespaces")
 	}
 	switch g.Selection.Mode {
@@ -137,6 +137,11 @@ func ValidNamespace(value string) bool {
 
 func ValidResourceID(value string) bool { return validLiteral(value, MaxResourceIDBytes) }
 func ValidProfileID(value string) bool  { return validLiteral(value, MaxProfileIDBytes) }
+
+// ValidNamespaces and ValidScopes apply the same snapshot bounds to issuer
+// profile declarations. Configuration must not silently deduplicate consent.
+func ValidNamespaces(values []string) bool { return validSet(values, MaxNamespaces, ValidNamespace) }
+func ValidScopes(values []string) bool     { return validSet(values, MaxScopes, ValidScope) }
 
 func validLiteral(value string, limit int) bool {
 	if len(value) == 0 || len(value) > limit {
