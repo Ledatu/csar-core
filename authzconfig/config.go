@@ -29,6 +29,7 @@ type Config struct {
 	Audit                stsclient.ServiceAuthConfig    `yaml:"audit,omitempty"`
 	AuditOutboxEnabled   bool                           `yaml:"audit_outbox_enabled"`
 	BootstrapAssignments []BootstrapAssignment          `yaml:"bootstrap_assignments"`
+	ServicePolicies      *ServicePolicyConfig           `yaml:"service_policies,omitempty"`
 }
 
 // AdminConfig configures the HTTP admin API surface.
@@ -112,7 +113,7 @@ type BootstrapAssignment struct {
 // variables, applying defaults, and validating.
 func LoadFromBytes(data []byte) (*Config, error) {
 	var cfg Config
-	if err := configutil.UnmarshalYAMLWithEnv(data, &cfg); err != nil {
+	if err := configutil.UnmarshalYAMLWithEnvStrictSections(data, &cfg, "service_policies"); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 	applyDefaults(&cfg)
@@ -190,6 +191,9 @@ func (c *Config) validate() error {
 		if _, ok := roleNames[role]; !ok {
 			return fmt.Errorf("admin.service_assignable_roles[%d]: role %q is not defined in policy.roles", i, role)
 		}
+	}
+	if err := c.ServicePolicies.validate(roleNames, c.Admin.ServiceAssignableRoles); err != nil {
+		return err
 	}
 
 	for i, ba := range c.BootstrapAssignments {

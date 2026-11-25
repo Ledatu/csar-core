@@ -34,6 +34,23 @@ Runtime must authenticate exact peers against the dedicated CA separately per
 feature; policy names/filenames do not establish verified trust. Authz evaluates
 permission; the issuer cannot replace it with role-name or scope heuristics.
 
+Authz's optional `service_policies` version 1 declaration fixes each decision
+profile's audience, permission resource/action and namespace-to-scope binding.
+Tenant bindings append an exact resource ID to a delimited literal prefix;
+platform alternatives explicitly use an empty scope ID. Exact service subjects
+receive separate `decide`, `list_subject_scopes`, `list_scope_assignments`,
+`query_assignments`, `grant_role` and `revoke_role` capabilities, each restricted
+to named profiles. Subject decisions/listing require explicit `request_bound`
+and/or `background` modes. Only tenant-only mutation profiles may grant/revoke
+roles, and their role subsets must remain inside the configured global service
+role ceiling. Omitted capabilities grant nothing; no runtime evaluator is added.
+
+This declaration uses the same strict parsing and activation guard as Authn's:
+absent preserves current behavior and `enabled: true` fails. Runtime integration
+must separately enforce verified service/owner/credential bindings, complete
+bounded batch results, current engine decisions and startup-only policy changes.
+Configuration versions evolve independently from persisted consent versions.
+
 [![CI](https://github.com/ledatu/csar-core/actions/workflows/ci.yml/badge.svg)](https://github.com/ledatu/csar-core/actions/workflows/ci.yml)
 
 Shared Go primitives for the csar service family. Provides pluggable config sourcing, PostgreSQL utilities, router-bound STS clients, HTTP helpers, S3-compatible storage, Yandex Cloud IAM auth, and safe secret handling.

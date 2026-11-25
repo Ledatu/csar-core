@@ -1,3 +1,20 @@
+## Generic Authz service policy declarations (U02b, source only)
+
+`authzconfig.Config.ServicePolicies` declares fixed permission/audience/namespace
+decision profiles and exact per-service operation/profile capabilities. Explicit
+request-bound/background modes apply only to subject decisions/scope listing;
+assignment reads and tenant role grant/revoke are distinct operations. Role subsets
+must exist in policy and intersect `admin.service_assignable_roles`; platform
+bindings cannot authorize role writes. Tenant prefixes are delimited and bounded
+to preserve exact IDs within 256 bytes; different namespaces cannot alias a tenant
+mapping. An explicit platform alternative has empty scope ID and never implies
+tenant membership. The existing engine owns all live permission evaluation.
+Absent declarations preserve behavior and new `enabled: true` is rejected.
+Configuration schema versions are independent of stored consent format versions.
+No service HTTP operation, assignment rule, policy, migration or runtime trust
+is changed. Later receivers must enforce verified service/owner/namespace bindings,
+atomic failure behavior and current authority before lifting activation guards.
+
 ## Generic credential profile declarations (U02a, source only)
 
 `authnconfig.Config.Credentials` is an optional versioned declaration: public
