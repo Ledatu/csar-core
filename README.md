@@ -1,5 +1,22 @@
 # csar-core
 
+## Universal resource consent values
+
+`authntokens` provides structural `ResourceRef`, `ScopeRef`, `ResourceSelection`
+and versioned `GrantConstraints` values. Resource identity includes namespace
+and a literal, case-sensitive, non-UUID-specific ID. A selected grant contains
+1–256 distinct refs in its consented namespaces; `current_and_future` explicitly
+contains no refs and retains its namespace snapshot. Profiles support at most
+16 namespaces and 32 scopes. Resource namespaces are at most 63 ASCII bytes,
+IDs 192, and authorization scope IDs retain the existing 256-byte bound.
+
+Validation does not authenticate, authorize or resolve resources. The issuer
+must bind consent to its authoritative owner/caller/family/deadline record and
+intersect that snapshot with current policy and permission checks. Configuration
+growth cannot expand old consent. Resource owners retain lifecycle/discovery.
+These values add no endpoints and do not change the existing delegation wire,
+session tokens, STS, origin proofs or configured outbound route-token signing.
+
 [![CI](https://github.com/ledatu/csar-core/actions/workflows/ci.yml/badge.svg)](https://github.com/ledatu/csar-core/actions/workflows/ci.yml)
 
 Shared Go primitives for the csar service family. Provides pluggable config sourcing, PostgreSQL utilities, router-bound STS clients, HTTP helpers, S3-compatible storage, Yandex Cloud IAM auth, and safe secret handling.
