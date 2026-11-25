@@ -1,3 +1,17 @@
+## Universal resource consent contracts (U01, source only)
+
+`authntokens.ResourceRef` separates namespace and opaque literal ID;
+`ScopeRef` retains explicit tenant/platform authorization scope. Versioned
+`GrantConstraints` validates an explicit consent snapshot with selected refs or
+current-and-future resources within its persisted namespace set. Namespace and
+ID limits fit existing 256-byte origin/scope references; selectors cap at 256,
+decision batches at 100, namespaces at 16 and scopes at 32. JSON envelope bounds
+include maximum escaped scope strings. These values establish neither identity,
+resource existence nor current permission. Issuers own immutable owner/caller/
+family/deadline bindings and must intersect consent with current policy/authority.
+Existing delegation/session route-token wire and the outbound Telegram JWT bridge
+are unchanged. No new credential, issuer, storage, receiver or policy is activated.
+
 ## Explicit Authn issuer trust configuration
 
 `authnconfig.Config.OriginRouterCAFile` permits a manifest to opt into the existing
