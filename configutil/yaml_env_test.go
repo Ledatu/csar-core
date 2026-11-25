@@ -1,6 +1,7 @@
 package configutil
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -91,6 +92,42 @@ func TestStrictSecuritySectionsRejectAmbiguity(t *testing.T) {
 				t.Fatal("configured value leaked")
 			}
 		})
+	}
+}
+
+func TestStrictExpansionVisitsAliasedScalarsOnce(t *testing.T) {
+	t.Setenv("CSAR_TEST_FIRST_EXPANSION", "${CSAR_TEST_SECOND_EXPANSION}")
+	t.Setenv("CSAR_TEST_SECOND_EXPANSION", "must-not-expand-again")
+	data := "shared: &shared '${CSAR_TEST_FIRST_EXPANSION}'\nlegacy: *shared\n"
+	var cfg struct {
+		Legacy string `yaml:"legacy"`
+	}
+	if err := UnmarshalYAMLWithEnvStrictSections([]byte(data), &cfg, "security"); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Legacy != "${CSAR_TEST_SECOND_EXPANSION}" {
+		t.Fatal("an aliased scalar was expanded more than once")
+	}
+}
+
+func TestStrictExpansionOfSharedAliasGraph(t *testing.T) {
+	// Unknown legacy fields are not decoded, but expansion still traverses them.
+	// Each level references the previous node twice; revisiting every edge path
+	// would do exponential work before the decoder can enforce its alias bounds.
+	var data strings.Builder
+	data.WriteString("level0: &level0 [scalar]\n")
+	for i := 1; i <= 40; i++ {
+		fmt.Fprintf(&data, "level%d: &level%d [*level%d, *level%d]\n", i, i, i-1, i-1)
+	}
+	data.WriteString("legacy: retained\n")
+	var cfg struct {
+		Legacy string `yaml:"legacy"`
+	}
+	if err := UnmarshalYAMLWithEnvStrictSections([]byte(data.String()), &cfg, "security"); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Legacy != "retained" {
+		t.Fatal("legacy field lost")
 	}
 }
 
