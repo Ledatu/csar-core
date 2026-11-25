@@ -13,6 +13,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// CredentialConfigVersion evolves independently of stored consent formats.
+const CredentialConfigVersion = 1
+
 // CredentialConfig declares future generic issuer policy. Current loaders reject
 // activation until runtime receivers implement these semantics explicitly.
 type CredentialConfig struct {
@@ -75,7 +78,7 @@ func (c *CredentialConfig) validate(generalCAFile string) error {
 	if c == nil {
 		return nil
 	}
-	if c.Version != authntokens.ConstraintsVersion {
+	if c.Version != CredentialConfigVersion {
 		return fmt.Errorf("credentials: unsupported version")
 	}
 	if c.Enabled {
