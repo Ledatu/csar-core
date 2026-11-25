@@ -44,6 +44,7 @@ type Config struct {
 	LegacyLogin            LegacyLoginConfig              `yaml:"legacy_login,omitempty"`
 	LegacyUsersSync        LegacyUsersSyncConfig          `yaml:"legacy_users_sync,omitempty"`
 	RouteTokens            map[string]RouteTokenConfig    `yaml:"route_tokens,omitempty"`
+	Credentials            *CredentialConfig              `yaml:"credentials,omitempty"`
 }
 
 // AuthzConfig configures the connection to csar-authz for permissions endpoints.
@@ -271,7 +272,7 @@ func NewDuration(d time.Duration) Duration {
 // variables, applying defaults, and validating.
 func LoadFromBytes(data []byte) (*Config, error) {
 	var cfg Config
-	if err := configutil.UnmarshalYAMLWithEnv(data, &cfg); err != nil {
+	if err := configutil.UnmarshalYAMLWithEnvStrictSections(data, &cfg, "credentials"); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 
@@ -389,6 +390,9 @@ func LoadFromBytes(data []byte) (*Config, error) {
 }
 
 func (c *Config) validate() error {
+	if err := c.Credentials.validate(c.TLS.ClientCAFile); err != nil {
+		return err
+	}
 	if err := c.TLS.Validate(); err != nil {
 		return err
 	}

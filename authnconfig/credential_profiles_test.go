@@ -1,0 +1,255 @@
+package authnconfig
+
+import (
+	"fmt"
+	"slices"
+	"strings"
+	"testing"
+
+	"gopkg.in/yaml.v3"
+)
+
+const credentialBase = "base_url: https://id.example.test\ndatabase:\n  dsn: postgres://test\noauth:\n  enabled: false\n"
+
+const credentialDeclaration = `credentials:
+  version: 1
+  enabled: false
+  issuer_url: https://id.example.test
+  consent_url: https://console.example.test/consent
+  mutation_origins: [https://console.example.test]
+  consent_cookie_name: __Host-reports-consent
+  trust_policies:
+    - id: reports-ingress
+      ca_file: /dedicated/reports-ca.pem
+      peer_cn: reports-router
+  profiles:
+    - id: reports
+      revision: 1
+      audience: https://reports.example.test
+      scopes: [{scope: 'reports:read', decision_profile: report-reader}]
+      namespaces: [workspace]
+      selection_modes: [selected, current_and_future]
+      access_ttl: 1h
+      grant_ttl: 168h
+      proof_ttl: 1m
+      trust_policy: reports-ingress
+  receivers:
+    - subject: svc:resource-owner
+      profiles: [reports]
+      operations: [inspect, evaluate]
+      trust_policy: reports-ingress
+`
+
+func TestCredentialDeclarationsAreDisabled(t *testing.T) {
+	absent, err := LoadFromBytes([]byte(credentialBase))
+	if err != nil || absent.Credentials != nil {
+		t.Fatal("absent declaration changed defaults", err)
+	}
+	for name, declaration := range map[string]string{
+		"unrelated application": credentialDeclaration,
+		"Aurum deployment data": strings.NewReplacer("reports.example.test", "mcp.aurum-sky.net", "reports:read", "analytics:read", "workspace", "wildberries", "svc:resource-owner", "svc:aurumskynet-campaigns").Replace(credentialDeclaration),
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg, err := LoadFromBytes([]byte(credentialBase + declaration))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Credentials.Enabled || cfg.RouteTokens != nil || cfg.Redis != nil || cfg.Cookie.Name != "csar_session" {
+				t.Fatal("declaration activated or changed legacy behavior")
+			}
+			if cfg.Credentials.Profiles[0].Revision != 1 || cfg.Credentials.Receivers[0].Subject == "" {
+				t.Fatal("declaration was discarded")
+			}
+		})
+	}
+	_, err = LoadFromBytes([]byte(credentialBase + strings.Replace(credentialDeclaration, "enabled: false", "enabled: true", 1)))
+	if err == nil || !strings.Contains(err.Error(), "runtime activation is not supported") {
+		t.Fatal("unsupported activation accepted", err)
+	}
+}
+
+func TestCredentialDeclarationFailures(t *testing.T) {
+	for name, change := range map[string]func(string) string{
+		"unknown version":      func(s string) string { return strings.Replace(s, "version: 1", "version: 2", 1) },
+		"missing version":      func(s string) string { return strings.Replace(s, "  version: 1\n", "", 1) },
+		"unknown field":        func(s string) string { return s + "  enable: true\n" },
+		"nested unknown field": func(s string) string { return strings.Replace(s, "revision: 1", "revision: 1\n      extra: true", 1) },
+		"duplicate field":      func(s string) string { return strings.Replace(s, "version: 1", "version: 1\n  version: 1", 1) },
+		"null block":           func(string) string { return "credentials: null\n" },
+		"empty block":          func(string) string { return "credentials: {}\n" },
+		"nonmapping block":     func(string) string { return "credentials: []\n" },
+		"null profile": func(s string) string {
+			return strings.Replace(s, "    - id: reports\n", "    - null\n    - id: reports\n", 1)
+		},
+		"second document":             func(s string) string { return s + "---\ncredentials: {}\n" },
+		"malformed trailing document": func(s string) string { return s + "---\ninvalid: [\n" },
+		"wildcard origin": func(s string) string {
+			return strings.ReplaceAll(s, "https://console.example.test]", "https://*.example.test]")
+		},
+		"origin path": func(s string) string {
+			return strings.Replace(s, "mutation_origins: [https://console.example.test]", "mutation_origins: [https://console.example.test/]", 1)
+		},
+		"duplicate origin": func(s string) string {
+			return strings.Replace(s, "mutation_origins: [https://console.example.test]", "mutation_origins: [https://console.example.test, https://console.example.test]", 1)
+		},
+		"missing origin": func(s string) string {
+			return strings.Replace(s, "mutation_origins: [https://console.example.test]", "mutation_origins: []", 1)
+		},
+		"insecure cookie": func(s string) string { return strings.Replace(s, "__Host-reports-consent", "reports-consent", 1) },
+		"issuer query": func(s string) string {
+			return strings.Replace(s, "issuer_url: https://id.example.test", "issuer_url: https://id.example.test?secret=do-not-echo", 1)
+		},
+		"unknown trust": func(s string) string {
+			return strings.Replace(s, "trust_policy: reports-ingress", "trust_policy: unknown", 1)
+		},
+		"zero revision": func(s string) string { return strings.Replace(s, "revision: 1", "revision: 0", 1) },
+		"namespace duplicate": func(s string) string {
+			return strings.Replace(s, "namespaces: [workspace]", "namespaces: [workspace, workspace]", 1)
+		},
+		"bad decision reference": func(s string) string {
+			return strings.Replace(s, "decision_profile: report-reader", "decision_profile: '*'", 1)
+		},
+		"scope duplicate": func(s string) string {
+			return strings.Replace(s, "scopes: [{scope: 'reports:read', decision_profile: report-reader}]", "scopes: [{scope: 'reports:read', decision_profile: report-reader}, {scope: 'reports:read', decision_profile: report-reader}]", 1)
+		},
+		"scope missing": func(s string) string {
+			return strings.Replace(s, "scopes: [{scope: 'reports:read', decision_profile: report-reader}]", "scopes: []", 1)
+		},
+		"mixed modes": func(s string) string { return strings.Replace(s, "selected, current_and_future", "selected, all", 1) },
+		"mode duplicate": func(s string) string {
+			return strings.Replace(s, "selected, current_and_future", "selected, selected", 1)
+		},
+		"zero TTL":                 func(s string) string { return strings.Replace(s, "access_ttl: 1h", "access_ttl: 0s", 1) },
+		"access beyond grant":      func(s string) string { return strings.Replace(s, "access_ttl: 1h", "access_ttl: 169h", 1) },
+		"proof beyond access":      func(s string) string { return strings.Replace(s, "proof_ttl: 1m", "proof_ttl: 2h", 1) },
+		"invalid duration":         func(s string) string { return strings.Replace(s, "proof_ttl: 1m", "proof_ttl: secret-do-not-echo", 1) },
+		"wildcard service":         func(s string) string { return strings.Replace(s, "svc:resource-owner", "svc:*", 1) },
+		"service prefix only":      func(s string) string { return strings.Replace(s, "svc:resource-owner", "'svc:'", 1) },
+		"nonservice receiver":      func(s string) string { return strings.Replace(s, "svc:resource-owner", "owner", 1) },
+		"unknown receiver profile": func(s string) string { return strings.Replace(s, "profiles: [reports]", "profiles: [unknown]", 1) },
+		"duplicate receiver profile": func(s string) string {
+			return strings.Replace(s, "profiles: [reports]", "profiles: [reports, reports]", 1)
+		},
+		"issuance capability":     func(s string) string { return strings.Replace(s, "inspect, evaluate", "inspect, issue", 1) },
+		"duplicate operation":     func(s string) string { return strings.Replace(s, "inspect, evaluate", "inspect, inspect", 1) },
+		"unverified peer pattern": func(s string) string { return strings.Replace(s, "peer_cn: reports-router", "peer_cn: '*'", 1) },
+		"relative CA":             func(s string) string { return strings.Replace(s, "/dedicated/reports-ca.pem", "relative.pem", 1) },
+		"CA with dot segments": func(s string) string {
+			return strings.Replace(s, "/dedicated/reports-ca.pem", "/dedicated/../secret-do-not-echo.pem", 1)
+		},
+		"section alias": func(s string) string {
+			return "defaults: &defaults\n" + strings.TrimPrefix(s, "credentials:\n") + "credentials: *defaults\n"
+		},
+		"root merge": func(s string) string { return "defaults: &defaults\n  harmless: true\n<<: *defaults\n" + s },
+		"inner alias": func(s string) string {
+			return strings.Replace(s, "namespaces: [workspace]", "namespaces: &shared [workspace]", 1)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := LoadFromBytes([]byte(credentialBase + change(credentialDeclaration)))
+			if err == nil {
+				t.Fatal("unsafe declaration accepted")
+			}
+			if strings.Contains(err.Error(), "do-not-echo") {
+				t.Fatal("configured value leaked in error")
+			}
+		})
+	}
+}
+
+func TestCredentialCollectionBoundsAndReferences(t *testing.T) {
+	for name, mutate := range map[string]func(*CredentialConfig){
+		"duplicate profile":       func(c *CredentialConfig) { c.Profiles = append(c.Profiles, c.Profiles[0]) },
+		"duplicate trust":         func(c *CredentialConfig) { c.TrustPolicies = append(c.TrustPolicies, c.TrustPolicies[0]) },
+		"duplicate receiver":      func(c *CredentialConfig) { c.Receivers = append(c.Receivers, c.Receivers[0]) },
+		"unknown receiver trust":  func(c *CredentialConfig) { c.Receivers[0].TrustPolicy = "missing" },
+		"too many profiles":       func(c *CredentialConfig) { c.Profiles = slices.Repeat(c.Profiles, 33) },
+		"too many trust policies": func(c *CredentialConfig) { c.TrustPolicies = slices.Repeat(c.TrustPolicies, 33) },
+		"too many receivers":      func(c *CredentialConfig) { c.Receivers = slices.Repeat(c.Receivers, 65) },
+		"too many origins":        func(c *CredentialConfig) { c.MutationOrigins = slices.Repeat(c.MutationOrigins, 33) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg, err := LoadFromBytes([]byte(credentialBase + credentialDeclaration))
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutate(cfg.Credentials)
+			if cfg.Credentials.validate("") == nil {
+				t.Fatal("unsafe collection accepted")
+			}
+		})
+	}
+	cfg, err := LoadFromBytes([]byte(credentialBase + credentialDeclaration))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Credentials.validate("/dedicated/reports-ca.pem") == nil {
+		t.Fatal("general service root reused as dedicated trust")
+	}
+	// The same CA path in two named policies must not combine their peer identities.
+	cfg.Credentials.TrustPolicies = append(cfg.Credentials.TrustPolicies, CredentialTrustPolicy{ID: "other-feature", CAFile: "/dedicated/reports-ca.pem", PeerCN: "different-router"})
+	if err := cfg.Credentials.validate(""); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Credentials.Profiles[0].TrustPolicy != "reports-ingress" || cfg.Credentials.TrustPolicies[0].PeerCN != "reports-router" {
+		t.Fatal("feature trust was broadened")
+	}
+}
+
+func TestCredentialEnvironmentExpansion(t *testing.T) {
+	t.Setenv("CSAR_TEST_PROFILE_TTL", "2h")
+	t.Setenv("CSAR_TEST_PROFILE_ISSUER", "https://id.example.test\ncredentials: {enabled: true}")
+	data := strings.Replace(credentialDeclaration, "access_ttl: 1h", "access_ttl: '${CSAR_TEST_PROFILE_TTL}'", 1)
+	cfg, err := LoadFromBytes([]byte(credentialBase + data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Credentials.Profiles[0].AccessTTL.String() != "2h0m0s" {
+		t.Fatal("typed duration expansion failed")
+	}
+	data = strings.Replace(credentialDeclaration, "issuer_url: https://id.example.test", "issuer_url: '${CSAR_TEST_PROFILE_ISSUER}'", 1)
+	if _, err = LoadFromBytes([]byte(credentialBase + data)); err == nil {
+		t.Fatal("expanded YAML injection accepted")
+	}
+	// Config round-trip still treats each configured scope as a literal string.
+	body, err := yaml.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = LoadFromBytes(body); err != nil {
+		t.Fatal(fmt.Errorf("round-trip declaration: %w", err))
+	}
+}
+
+func TestCredentialMaximumDeclaration(t *testing.T) {
+	cfg, err := LoadFromBytes([]byte(credentialBase + credentialDeclaration))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := cfg.Credentials
+	profile, receiver, trust := c.Profiles[0], c.Receivers[0], c.TrustPolicies[0]
+	c.Profiles, c.Receivers, c.TrustPolicies, c.MutationOrigins = nil, nil, nil, nil
+	for i := range 32 {
+		p, policy := profile, trust
+		p.ID = fmt.Sprintf("profile-%02d", i)
+		policy.ID = fmt.Sprintf("trust-%02d", i)
+		p.TrustPolicy = policy.ID
+		c.Profiles = append(c.Profiles, p)
+		c.TrustPolicies = append(c.TrustPolicies, policy)
+		c.MutationOrigins = append(c.MutationOrigins, fmt.Sprintf("https://console-%02d.example.test", i))
+	}
+	for i := range 64 {
+		r := receiver
+		r.Subject = fmt.Sprintf("svc:owner-%02d", i)
+		r.Profiles = []string{c.Profiles[i%32].ID}
+		r.TrustPolicy = c.TrustPolicies[i%32].ID
+		c.Receivers = append(c.Receivers, r)
+	}
+	body, err := yaml.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadFromBytes(body); err != nil {
+		t.Fatal("maximum declaration rejected", err)
+	}
+}

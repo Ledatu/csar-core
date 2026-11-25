@@ -17,6 +17,23 @@ growth cannot expand old consent. Resource owners retain lifecycle/discovery.
 These values add no endpoints and do not change the existing delegation wire,
 session tokens, STS, origin proofs or configured outbound route-token signing.
 
+The optional Authn `credentials` configuration declares version 1 issuer URLs,
+exact mutation origins, a secure consent cookie, dedicated trust references,
+resource-server profiles and exact service inspection/evaluation capabilities.
+Each profile carries an explicit revision, audience, scopes referencing Authz
+decision profiles, namespaces, selection modes and positive bounded lifetimes.
+The new schema rejects unknown keys, duplicates, nulls, aliases and merged
+defaults within that block. Authn configuration accepts a single YAML document;
+existing unrelated fields keep their previous schemas. Environment values remain
+scalar data, including quoted typed duration/bool placeholders.
+
+This is declaration-only: absent `credentials` preserves existing behavior and
+`enabled: true` fails validation. Disabled declarations must be complete and valid.
+No new receiver, consent flow, trust pool, endpoint or lifecycle policy is installed.
+Runtime must authenticate exact peers against the dedicated CA separately per
+feature; policy names/filenames do not establish verified trust. Authz evaluates
+permission; the issuer cannot replace it with role-name or scope heuristics.
+
 [![CI](https://github.com/ledatu/csar-core/actions/workflows/ci.yml/badge.svg)](https://github.com/ledatu/csar-core/actions/workflows/ci.yml)
 
 Shared Go primitives for the csar service family. Provides pluggable config sourcing, PostgreSQL utilities, router-bound STS clients, HTTP helpers, S3-compatible storage, Yandex Cloud IAM auth, and safe secret handling.
