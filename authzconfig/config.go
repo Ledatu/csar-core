@@ -112,13 +112,24 @@ type BootstrapAssignment struct {
 // LoadFromBytes parses raw YAML bytes into a Config, expanding environment
 // variables, applying defaults, and validating.
 func LoadFromBytes(data []byte) (*Config, error) {
+	return loadFromBytes(data, false)
+}
+
+// LoadFromBytesWithServiceDecisions is for receivers that enforce the generic
+// decision operation. Helpers and older runtimes keep the default loader, which
+// rejects activation. Future listing/mutation operations remain unsupported.
+func LoadFromBytesWithServiceDecisions(data []byte) (*Config, error) {
+	return loadFromBytes(data, true)
+}
+
+func loadFromBytes(data []byte, serviceDecisions bool) (*Config, error) {
 	var cfg Config
 	if err := configutil.UnmarshalYAMLWithEnvStrictSections(data, &cfg, "service_policies"); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 	applyDefaults(&cfg)
 
-	if err := cfg.validate(); err != nil {
+	if err := cfg.validate(serviceDecisions); err != nil {
 		return nil, fmt.Errorf("config validation: %w", err)
 	}
 
@@ -148,7 +159,7 @@ func applyDefaults(cfg *Config) {
 	}
 }
 
-func (c *Config) validate() error {
+func (c *Config) validate(serviceDecisions bool) error {
 	if err := c.TLS.Validate(); err != nil {
 		return err
 	}
@@ -192,7 +203,7 @@ func (c *Config) validate() error {
 			return fmt.Errorf("admin.service_assignable_roles[%d]: role %q is not defined in policy.roles", i, role)
 		}
 	}
-	if err := c.ServicePolicies.validate(roleNames, c.Admin.ServiceAssignableRoles); err != nil {
+	if err := c.ServicePolicies.validateRuntime(roleNames, c.Admin.ServiceAssignableRoles, serviceDecisions); err != nil {
 		return err
 	}
 

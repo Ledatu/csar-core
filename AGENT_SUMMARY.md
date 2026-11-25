@@ -1,3 +1,15 @@
+## Service-decision receiver prerequisites (U03, source only)
+
+`authzconfig.LoadFromBytesWithServiceDecisions` is an explicit receiver opt-in
+for enabled `decide` capabilities. The normal/helper loader still rejects enabled
+policies, and the decision-only loader rejects enabled list/write capabilities.
+Service receivers must enforce pinned trusted ingress, owner/service/profile/
+audience/resource matching and startup-only changes before using it.
+`httpx.ReadStrictJSON` is an opt-in security-object reader over the existing
+decoder: duplicate/case-aliased keys, invalid UTF-8, excessive nesting and trailing
+or unknown fields fail without reflecting request values. Legacy `ReadJSON` stays
+compatible. Neither API installs endpoints or changes deployed configuration.
+
 ## Generic Authz service policy declarations (U02b, source only)
 
 `authzconfig.Config.ServicePolicies` declares fixed permission/audience/namespace

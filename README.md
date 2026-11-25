@@ -51,6 +51,17 @@ must separately enforce verified service/owner/credential bindings, complete
 bounded batch results, current engine decisions and startup-only policy changes.
 Configuration versions evolve independently from persisted consent versions.
 
+Receivers implementing the generic `decide` operation may explicitly use
+`authzconfig.LoadFromBytesWithServiceDecisions`. It accepts enabled decision-only
+policies; future list/write capabilities remain rejected. The default/helper
+loader retains its activation guard. Runtime must enforce trusted ingress and
+the configured service/subject/profile/audience/resource bindings separately.
+
+New security request DTOs can opt into `httpx.ReadStrictJSON`, which preserves
+the existing byte/unknown-field/single-document checks and also rejects duplicate
+or case-aliased object keys, invalid UTF-8 and nesting beyond 64 levels. Existing
+`ReadJSON` consumers retain their previous behavior.
+
 [![CI](https://github.com/ledatu/csar-core/actions/workflows/ci.yml/badge.svg)](https://github.com/ledatu/csar-core/actions/workflows/ci.yml)
 
 Shared Go primitives for the csar service family. Provides pluggable config sourcing, PostgreSQL utilities, router-bound STS clients, HTTP helpers, S3-compatible storage, Yandex Cloud IAM auth, and safe secret handling.

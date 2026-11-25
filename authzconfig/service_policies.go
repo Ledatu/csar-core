@@ -66,13 +66,17 @@ func (c *ServicePolicyConfig) UnmarshalYAML(node *yaml.Node) error {
 }
 
 func (c *ServicePolicyConfig) validate(roles map[string]struct{}, ceiling []string) error {
+	return c.validateRuntime(roles, ceiling, false)
+}
+
+func (c *ServicePolicyConfig) validateRuntime(roles map[string]struct{}, ceiling []string, decisionsSupported bool) error {
 	if c == nil {
 		return nil
 	}
 	if c.Version != ServicePoliciesVersion {
 		return fmt.Errorf("service_policies: unsupported version")
 	}
-	if c.Enabled {
+	if c.Enabled && !decisionsSupported {
 		return fmt.Errorf("service_policies: runtime activation is not supported")
 	}
 	if len(c.DecisionProfiles) < 1 || len(c.DecisionProfiles) > 32 || len(c.Services) > 64 {
@@ -97,6 +101,9 @@ func (c *ServicePolicyConfig) validate(roles map[string]struct{}, ceiling []stri
 		operations := make(map[string]bool, len(service.Operations))
 		for i := range service.Operations {
 			op := &service.Operations[i]
+			if c.Enabled && op.Operation != "decide" {
+				return fmt.Errorf("service_policies: receiver does not support configured operation")
+			}
 			if operations[op.Operation] {
 				return fmt.Errorf("service_policies: duplicate service operation")
 			}
