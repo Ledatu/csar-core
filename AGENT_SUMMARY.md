@@ -58,6 +58,12 @@ are unchanged. No new credential, issuer, storage, receiver or policy is activat
 
 ## Explicit Authn issuer trust configuration
 
+`OriginRouterPeerCN` optionally supplies the exact feature-specific verified leaf
+name alongside `OriginRouterCAFile`. Omission supplies no application default in
+Core; legacy runtime wrappers retain their compatibility policy until migration.
+The peer requires an explicitly configured dedicated CA and verified listener.
+Both fields are startup-only in Authn. Certificate material is never changed here.
+
 `authnconfig.Config.OriginRouterCAFile` permits a manifest to opt into the existing
 dedicated origin issuer without changing a secret-bearing environment file. It
 requires a verified client TLS listener; runtime registration still verifies the
