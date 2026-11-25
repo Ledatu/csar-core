@@ -272,3 +272,27 @@ func TestServicePolicyMaximumDeclaration(t *testing.T) {
 		t.Fatal("maximum declaration rejected", err)
 	}
 }
+
+func TestExplicitDecisionReceiverCapability(t *testing.T) {
+	declaration := strings.Replace(servicePolicyDeclaration, "enabled: false", "enabled: true", 1)
+	// The initial runtime only implements decisions, not listing or role writes.
+	if _, err := LoadFromBytesWithServiceDecisions([]byte(servicePolicyBase + declaration)); err == nil {
+		t.Fatal("unsupported operations were accepted by a decision-only receiver")
+	}
+	cfg, err := LoadFromBytes([]byte(servicePolicyBase + servicePolicyDeclaration))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.ServicePolicies.Services = cfg.ServicePolicies.Services[1:]
+	cfg.ServicePolicies.Enabled = true
+	body, err := yaml.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadFromBytesWithServiceDecisions(body); err != nil {
+		t.Fatal("explicit receiver rejected supported decisions", err)
+	}
+	if _, err := LoadFromBytes(body); err == nil {
+		t.Fatal("default/helper loader silently accepted runtime semantics")
+	}
+}
