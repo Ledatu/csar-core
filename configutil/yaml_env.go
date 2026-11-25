@@ -42,7 +42,7 @@ func UnmarshalYAMLWithEnvStrictSections(data []byte, out any, sections ...string
 			return fmt.Errorf("security configuration cannot inherit root defaults")
 		}
 	}
-	expandEnvInYAMLNode(&root)
+	expandEnvYAMLNode(&root, make(map[*yaml.Node]bool))
 	if err := root.Decode(out); err != nil {
 		// Decoder errors may include configured values; never echo them from
 		// security configuration, including malformed URL/path declarations.
@@ -143,18 +143,28 @@ func UnmarshalYAMLWithEnv(data []byte, out any) error {
 }
 
 func expandEnvInYAMLNode(node *yaml.Node) {
+	expandEnvYAMLNode(node, nil)
+}
+
+func expandEnvYAMLNode(node *yaml.Node, seen map[*yaml.Node]bool) {
 	if node == nil {
 		return
+	}
+	if seen != nil {
+		if seen[node] {
+			return
+		}
+		seen[node] = true
 	}
 
 	switch node.Kind {
 	case yaml.DocumentNode, yaml.SequenceNode:
 		for i := range node.Content {
-			expandEnvInYAMLNode(node.Content[i])
+			expandEnvYAMLNode(node.Content[i], seen)
 		}
 	case yaml.MappingNode:
 		for i := 1; i < len(node.Content); i += 2 {
-			expandEnvInYAMLNode(node.Content[i])
+			expandEnvYAMLNode(node.Content[i], seen)
 		}
 	case yaml.ScalarNode:
 		if node.Value == "" {
@@ -171,7 +181,7 @@ func expandEnvInYAMLNode(node *yaml.Node) {
 			}
 		}
 	case yaml.AliasNode:
-		expandEnvInYAMLNode(node.Alias)
+		expandEnvYAMLNode(node.Alias, seen)
 	}
 }
 
