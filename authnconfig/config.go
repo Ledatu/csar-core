@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ledatu/csar-core/authntokens"
 	"github.com/ledatu/csar-core/configutil"
 	"github.com/ledatu/csar-core/email"
 	"github.com/ledatu/csar-core/postbox"
@@ -39,6 +40,7 @@ type Config struct {
 	Audit                  stsclient.ServiceAuthConfig    `yaml:"audit,omitempty"`
 	AuditOutboxEnabled     bool                           `yaml:"audit_outbox_enabled"`
 	OriginRouterCAFile     string                         `yaml:"origin_router_ca_file,omitempty"`
+	OriginRouterPeerCN     string                         `yaml:"origin_router_peer_cn,omitempty"`
 	BotVerify              *BotVerifyConfig               `yaml:"bot_verify,omitempty"`
 	EmailOTP               *EmailOTPConfig                `yaml:"email_otp,omitempty"`
 	LegacyLogin            LegacyLoginConfig              `yaml:"legacy_login,omitempty"`
@@ -418,6 +420,9 @@ func (c *Config) validate() error {
 		if !c.TLS.IsEnabled() || c.TLS.ClientCAFile == "" {
 			return fmt.Errorf("origin_router_ca_file requires a verified client TLS listener")
 		}
+	}
+	if c.OriginRouterPeerCN != "" && (c.OriginRouterCAFile == "" || !authntokens.ValidProfileID(c.OriginRouterPeerCN)) {
+		return fmt.Errorf("origin_router_peer_cn requires an exact peer name and configured dedicated CA")
 	}
 	if err := c.Audit.Validate(); err != nil {
 		return err

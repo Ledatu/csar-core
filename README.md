@@ -2,6 +2,11 @@
 
 ## Universal resource consent values
 
+Authn deployments may explicitly set `origin_router_peer_cn` beside
+`origin_router_ca_file` for the origin issuer's exact verified gateway leaf name.
+Core supplies no peer default; existing runtime compatibility paths remain until
+migration. Both require verified ingress and startup-only runtime wiring.
+
 `authntokens` provides structural `ResourceRef`, `ScopeRef`, `ResourceSelection`
 and versioned `GrantConstraints` values. Resource identity includes namespace
 and a literal, case-sensitive, non-UUID-specific ID. A selected grant contains

@@ -34,3 +34,23 @@ func TestOriginRouterCARequiresExplicitVerifiedTLS(t *testing.T) {
 		})
 	}
 }
+
+func TestConfiguredOriginPeerIsExactAndHasNoDefault(t *testing.T) {
+	const base = "base_url: https://id.example.test\ndatabase: {dsn: postgres://test}\noauth: {enabled: false}\n"
+	const trusted = "origin_router_ca_file: /dedicated/router.pem\ntls: {cert_file: server.pem, key_file: key.pem, client_ca_file: general.pem}\n"
+	for _, peer := range []string{"reports-router", "unrelated-app-router"} {
+		cfg, err := LoadFromBytes([]byte(base + trusted + "origin_router_peer_cn: " + peer + "\n"))
+		if err != nil || cfg.OriginRouterPeerCN != peer {
+			t.Fatal("configured peer lost", err)
+		}
+	}
+	for _, data := range []string{base + "origin_router_peer_cn: reports-router\n", base + trusted + "origin_router_peer_cn: '*'\n", base + trusted + "origin_router_peer_cn: ' reports-router '\n"} {
+		if _, err := LoadFromBytes([]byte(data)); err == nil {
+			t.Fatal("ambiguous peer trust accepted")
+		}
+	}
+	cfg, err := LoadFromBytes([]byte(base + trusted))
+	if err != nil || cfg.OriginRouterPeerCN != "" {
+		t.Fatal("peer was inferred", err)
+	}
+}
