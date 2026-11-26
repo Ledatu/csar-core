@@ -21,6 +21,7 @@ const CredentialConfigVersion = 1
 // CredentialConfig declares future generic issuer policy. Current loaders reject
 // activation until runtime receivers implement these semantics explicitly.
 type CredentialConfig struct {
+	PublicOAuth       *CredentialPublicOAuth      `yaml:"public_oauth,omitempty"`
 	Decisions         stsclient.ServiceAuthConfig `yaml:"decisions,omitempty"`
 	Version           int                         `yaml:"version"`
 	Enabled           bool                        `yaml:"enabled"`
@@ -146,6 +147,9 @@ func (c *CredentialConfig) validateRuntime(generalCAFile string, receiver bool) 
 			return err
 		}
 		profiles[profile.ID] = true
+	}
+	if err := c.validatePublicOAuth(profiles); err != nil {
+		return err
 	}
 	subjects := make(map[string]bool, len(c.Receivers))
 	for _, receiver := range c.Receivers {
