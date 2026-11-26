@@ -50,7 +50,16 @@ type CredentialManualIssuance struct {
 	MaxTTL Duration `yaml:"max_ttl"`
 }
 
+// CredentialAdmission is a current owner gate independent of consented data
+// resources. All decision inputs and the required granting scope are policy.
+type CredentialAdmission struct {
+	DecisionProfile string                  `yaml:"decision_profile"`
+	Resource        authntokens.ResourceRef `yaml:"resource"`
+	RequiredScope   authntokens.ScopeRef    `yaml:"required_scope"`
+}
+
 type CredentialProfile struct {
+	Admission              *CredentialAdmission        `yaml:"admission,omitempty"`
 	ManualIssuance         *CredentialManualIssuance   `yaml:"manual_issuance,omitempty"`
 	ID                     string                      `yaml:"id"`
 	AcceptedGrantRevisions []uint64                    `yaml:"accepted_grant_revisions,omitempty"`
@@ -175,6 +184,11 @@ func (c *CredentialConfig) validateRuntime(generalCAFile string, receiver bool) 
 }
 
 func (p *CredentialProfile) validate() error {
+	if a := p.Admission; a != nil {
+		if !authntokens.ValidProfileID(a.DecisionProfile) || a.Resource.Validate() != nil || a.RequiredScope.Validate() != nil {
+			return fmt.Errorf("credentials: invalid profile admission")
+		}
+	}
 	if m := p.ManualIssuance; m != nil {
 		if (m.Family != "api_key" && m.Family != "connection") || m.MaxTTL.Duration < time.Second || m.MaxTTL.Duration%time.Second != 0 || m.MaxTTL.Duration > p.GrantTTL.Duration {
 			return fmt.Errorf("credentials: invalid manual issuance policy")
