@@ -454,3 +454,9 @@ No runtime configuration or network policy is activated by this library change.
 without userinfo, queries or fragments; other identity references retain their
 existing bound. Receivers need this Core version before enabling URL identifiers
 that exceed the legacy reference syntax. Existing safe-reference IDs still pass.
+
+## Generic OTP branding (source only, November 26)
+- Email OTP defaults to a generic subject/body. Optional `email_otp.display_name`
+  selects the product name separately from the sender header; HTML escapes both
+  name and code. Configured subject stays exact. Production branding/config and
+  transport behavior are unchanged by source preparation.

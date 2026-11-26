@@ -267,8 +267,8 @@ email_otp:
 	if cfg.EmailOTP.Postbox.Region != "ru-central1" {
 		t.Fatalf("EmailOTP.Postbox.Region = %q", cfg.EmailOTP.Postbox.Region)
 	}
-	if cfg.EmailOTP.Subject == "" {
-		t.Fatal("EmailOTP.Subject should default")
+	if cfg.EmailOTP.Subject != "Your sign-in code" {
+		t.Fatal("EmailOTP.Subject should have a generic default")
 	}
 }
 
@@ -533,5 +533,25 @@ legacy_users_sync:
 `))
 	if err == nil || !strings.Contains(err.Error(), "legacy_users_sync.lock_database_dsn is required") {
 		t.Fatalf("missing session DSN: %v", err)
+	}
+}
+
+func TestEmailOTPDisplayName(t *testing.T) {
+	for _, name := range []string{"", "Example ID", "Название <ID>"} {
+		c := &EmailOTPConfig{Enabled: true, CodeTTL: NewDuration(time.Minute), MaxPendingPerIP: 1, MaxPendingPerEmail: 1, MaxAttempts: 1, SenderAddress: "login@example.com", Subject: "Configured subject", DisplayName: name}
+		c.Postbox.ApplyDefaults()
+		c.Postbox.Auth.AuthMode = "metadata"
+		if err := c.validate(); err != nil {
+			t.Fatalf("valid name %q: %v", name, err)
+		}
+		if c.Subject != "Configured subject" {
+			t.Fatal("configured subject changed")
+		}
+	}
+	for _, name := range []string{"\r\nInjected", "two\nlines", "null\x00", " leading", "trailing ", "\u2028", string([]byte{0xff}), strings.Repeat("x", 201)} {
+		c := &EmailOTPConfig{Enabled: true, CodeTTL: NewDuration(time.Minute), MaxPendingPerIP: 1, MaxPendingPerEmail: 1, MaxAttempts: 1, SenderAddress: "login@example.com", Subject: "Configured subject", DisplayName: name}
+		if err := c.validate(); err == nil || !strings.Contains(err.Error(), "display_name") {
+			t.Fatalf("invalid name accepted: %q: %v", name, err)
+		}
 	}
 }

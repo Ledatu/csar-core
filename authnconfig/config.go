@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/ledatu/csar-core/authntokens"
@@ -90,6 +92,7 @@ type EmailOTPConfig struct {
 	SenderAddress      string        `yaml:"sender_address"`
 	SenderName         string        `yaml:"sender_name,omitempty"`
 	Subject            string        `yaml:"subject"`
+	DisplayName        string        `yaml:"display_name,omitempty"`
 	Postbox            PostboxConfig `yaml:"postbox"`
 	Delivery           *email.Config `yaml:"delivery,omitempty"`
 }
@@ -377,7 +380,7 @@ func loadFromBytes(data []byte, credentialReceiver, manualIssuance, publicOAuth 
 			cfg.EmailOTP.Cooldown = NewDuration(time.Minute)
 		}
 		if cfg.EmailOTP.Subject == "" {
-			cfg.EmailOTP.Subject = "Your AURUMSKYNET sign-in code"
+			cfg.EmailOTP.Subject = "Your sign-in code"
 		}
 		if cfg.EmailOTP.Delivery == nil {
 			cfg.EmailOTP.Postbox.ApplyDefaults()
@@ -606,6 +609,9 @@ func (c *EmailOTPConfig) validate() error {
 	}
 	if c.Subject == "" {
 		return fmt.Errorf("email_otp.subject is required when enabled")
+	}
+	if !utf8.ValidString(c.DisplayName) || len(c.DisplayName) > 200 || strings.TrimSpace(c.DisplayName) != c.DisplayName || strings.ContainsFunc(c.DisplayName, func(r rune) bool { return unicode.IsControl(r) || r == '\u2028' || r == '\u2029' }) {
+		return fmt.Errorf("email_otp.display_name must be valid UTF-8, at most 200 bytes and a single line without surrounding whitespace")
 	}
 	if c.Delivery != nil {
 		if c.Postbox.Endpoint != "" || c.Postbox.Region != "" || c.Postbox.Auth.AuthMode != "" || c.Postbox.Auth.SAKeyFile != "" || !c.Postbox.Auth.IAMToken.IsEmpty() || !c.Postbox.Auth.OAuthToken.IsEmpty() || !c.Postbox.Auth.AccessKeyID.IsEmpty() || !c.Postbox.Auth.SecretAccessKey.IsEmpty() {
