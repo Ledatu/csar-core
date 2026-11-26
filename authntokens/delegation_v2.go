@@ -10,13 +10,15 @@ import (
 
 const DelegationVersion2 = 2
 const (
+	AccessResource   = "access-resource"
+	AccessResourceV2 = "access-resource-v2"
 	GrantExchangeV2  = "grant-exchange-v2"
 	GrantDiscoveryV2 = "grant-discovery-v2"
 	GrantResourceV2  = "grant-resource-v2"
 )
 
 func IsDelegationV2(mode string) bool {
-	return mode == GrantExchangeV2 || mode == GrantDiscoveryV2 || mode == GrantResourceV2
+	return mode == GrantExchangeV2 || mode == GrantDiscoveryV2 || mode == GrantResourceV2 || mode == AccessResourceV2
 }
 
 // V2 is separate from v1: namespace/profile authority cannot be silently dropped.
@@ -60,10 +62,10 @@ func ValidCredentialBearer(token string) bool {
 	return true
 }
 func (r *DelegationRequestV2) Validate() error {
-	if r == nil || r.Version != 2 || !ValidCredentialBearer(r.Token) || !IsDelegation(r.Purpose) || !ValidProfileID(r.ProfileID) || !ValidAudience(r.Audience) || !ValidScope(r.Scope) || !ValidNamespace(r.Namespace) {
+	if r == nil || r.Version != 2 || !ValidCredentialBearer(r.Token) || (!IsDelegation(r.Purpose) && r.Purpose != AccessResource) || !ValidProfileID(r.ProfileID) || !ValidAudience(r.Audience) || !ValidScope(r.Scope) || !ValidNamespace(r.Namespace) {
 		return fmt.Errorf("invalid v2 delegation request")
 	}
-	if (r.Purpose == GrantResource) != (r.Resource != nil) || r.Resource != nil && (r.Resource.Validate() != nil || r.Resource.Namespace != r.Namespace) {
+	if (r.Purpose == GrantResource || r.Purpose == AccessResource) != (r.Resource != nil) || r.Resource != nil && (r.Resource.Validate() != nil || r.Resource.Namespace != r.Namespace) {
 		return fmt.Errorf("invalid v2 resource binding")
 	}
 	return nil
@@ -80,7 +82,7 @@ func (out *DelegationResultV2) ValidateFor(in *DelegationRequestV2, now time.Tim
 	if (id.CallerKind != caller.Agent && id.CallerKind != caller.Application) || id.OwnerSubject != id.EffectiveSubject || id.CredentialID == "" || id.Assurance != caller.Verified {
 		return deny
 	}
-	if in.Purpose == GrantExchange {
+	if in.Purpose == GrantExchange || in.Purpose == AccessResource {
 		if id.CredentialKind != caller.APIKey && id.CredentialKind != caller.OAuthAccess {
 			return deny
 		}
@@ -90,7 +92,7 @@ func (out *DelegationResultV2) ValidateFor(in *DelegationRequestV2, now time.Tim
 	if (out.Resource == nil) != (in.Resource == nil) || out.Resource != nil && *out.Resource != *in.Resource {
 		return deny
 	}
-	if in.Purpose == GrantResource {
+	if in.Purpose == GrantResource || in.Purpose == AccessResource {
 		if out.AuthorizedScope == nil || out.AuthorizedScope.Validate() != nil || out.DelegatedToken != "" {
 			return deny
 		}

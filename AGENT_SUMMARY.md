@@ -1,3 +1,7 @@
+## Account attribution and explicit direct resource use (approved §21, source only)
+
+Origin claims v2 use an explicit subject/credential account binding with no tenant. Credential binding preserves exact profile, original uint64 revision and audience. Gateway headers/contexts own and strictly decode it. The account delegate helper never imports tenant state; tenant helpers reject account bindings. The reserved origin purpose is unchanged and ordinary access verifiers still reject it. New access-resource-v2 has its own reusable access identity/authorized scope contract, never a proof or child token. Production, Redis, deployment and outbound Telegram-ID JWT behavior are unchanged.
+
 ## Profile-controlled manual issuance
 
 Optional `manual_issuance` fixes `family: api_key|connection` and `max_ttl` per
