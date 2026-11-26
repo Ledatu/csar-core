@@ -58,6 +58,7 @@ var TrustedHeaders = []string{
 	HeaderOperationID,
 	HeaderParentOperationID,
 	HeaderOriginExpiresAt,
+	HeaderOriginAccount,
 }
 
 // StripTrusted removes the complete reserved namespace, including unknown future

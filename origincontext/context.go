@@ -3,16 +3,23 @@
 package origincontext
 
 import (
+	"bytes"
 	"context"
 	"crypto"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/ledatu/csar-core/authntokens"
 	"github.com/ledatu/csar-core/caller"
+	"github.com/ledatu/csar-core/httpx"
 	"github.com/ledatu/csar-core/jwtx"
 )
 
@@ -29,18 +36,20 @@ const (
 var ErrInvalid = errors.New("origincontext: invalid attribution proof")
 
 type RootRequest struct {
-	Caller          *caller.Identity `json:"caller"`
-	Receiver        string           `json:"receiver"`
-	Resource        string           `json:"resource"`
-	RequestHash     string           `json:"request_hash"`
-	SourceExpiresAt time.Time        `json:"source_expires_at"`
+	Account         *authntokens.AccountBinding `json:"account,omitempty"`
+	Caller          *caller.Identity            `json:"caller"`
+	Receiver        string                      `json:"receiver"`
+	Resource        string                      `json:"resource"`
+	RequestHash     string                      `json:"request_hash"`
+	SourceExpiresAt time.Time                   `json:"source_expires_at"`
 }
 
 type DelegateRequest struct {
-	ParentToken string `json:"parent_token"`
-	Receiver    string `json:"receiver"`
-	Resource    string `json:"resource"`
-	RequestHash string `json:"request_hash"`
+	Account     *authntokens.AccountBinding `json:"account,omitempty"`
+	ParentToken string                      `json:"parent_token"`
+	Receiver    string                      `json:"receiver"`
+	Resource    string                      `json:"resource"`
+	RequestHash string                      `json:"request_hash"`
 }
 
 type Response struct {
@@ -49,16 +58,17 @@ type Response struct {
 }
 
 type Claims struct {
-	Version           int              `json:"version"`
-	TokenUse          string           `json:"token_use"`
-	Origin            *caller.Identity `json:"origin"`
-	Receiver          string           `json:"receiver"`
-	Sender            string           `json:"sender,omitempty"`
-	Resource          string           `json:"resource"`
-	RequestHash       string           `json:"request_hash"`
-	OperationID       string           `json:"operation_id"`
-	ParentOperationID string           `json:"parent_operation_id,omitempty"`
-	Depth             int              `json:"depth"`
+	Account           *authntokens.AccountBinding `json:"account,omitempty"`
+	Version           int                         `json:"version"`
+	TokenUse          string                      `json:"token_use"`
+	Origin            *caller.Identity            `json:"origin"`
+	Receiver          string                      `json:"receiver"`
+	Sender            string                      `json:"sender,omitempty"`
+	Resource          string                      `json:"resource"`
+	RequestHash       string                      `json:"request_hash"`
+	OperationID       string                      `json:"operation_id"`
+	ParentOperationID string                      `json:"parent_operation_id,omitempty"`
+	Depth             int                         `json:"depth"`
 	jwt.RegisteredClaims
 }
 
@@ -74,7 +84,11 @@ func IssueRoot(keys *jwtx.KeyPair, issuer string, in *RootRequest) (*Response, e
 		deadline = in.SourceExpiresAt.UTC().Truncate(time.Second)
 	}
 	original := *in.Caller
-	c := &Claims{Version: 1, TokenUse: TokenUse, Origin: &original, Receiver: in.Receiver, Resource: in.Resource, RequestHash: in.RequestHash,
+	version := 1
+	if in.Account != nil {
+		version = 2
+	}
+	c := &Claims{Version: version, Account: in.Account.Clone(), TokenUse: TokenUse, Origin: &original, Receiver: in.Receiver, Resource: in.Resource, RequestHash: in.RequestHash,
 		OperationID: uuid.NewString(), RegisteredClaims: jwt.RegisteredClaims{Issuer: issuer, Audience: jwt.ClaimStrings{AudiencePrefix + in.Receiver},
 			ID: uuid.NewString(), IssuedAt: jwt.NewNumericDate(now), NotBefore: jwt.NewNumericDate(now), ExpiresAt: jwt.NewNumericDate(deadline)}}
 	return sign(keys, c)
@@ -92,7 +106,7 @@ func Delegate(keys *jwtx.KeyPair, issuer, service string, in *DelegateRequest) (
 		}
 		return keys.PublicKey, nil
 	}, issuer, service)
-	if err != nil || parent.Depth >= MaxDepth || parent.Resource != in.Resource {
+	if err != nil || parent.Depth >= MaxDepth || parent.Resource != in.Resource || !sameAccount(parent.Account, in.Account) {
 		return nil, ErrInvalid
 	}
 	c := clone(parent)
@@ -109,16 +123,19 @@ func Verify(token string, keyFunc jwtx.KeyFunc, issuer, receiver string) (*Claim
 	if len(token) == 0 || len(token) > MaxTokenBytes || keyFunc == nil || issuer == "" || receiver == "" {
 		return nil, ErrInvalid
 	}
-	verified, err := jwtx.Verify(token, keyFunc, &jwtx.VerifyConfig{RequiredIssuer: issuer, RequiredAudience: AudiencePrefix + receiver, AllowedAlgorithms: []string{"EdDSA", "RS256"}, ClockSkew: 5 * time.Second})
+	_, err := jwtx.Verify(token, keyFunc, &jwtx.VerifyConfig{RequiredIssuer: issuer, RequiredAudience: AudiencePrefix + receiver, AllowedAlgorithms: []string{"EdDSA", "RS256"}, ClockSkew: 5 * time.Second})
 	if err != nil {
 		return nil, ErrInvalid
 	}
-	body, err := json.Marshal(verified.Claims)
+	// Verify the signature/times with the existing stack, then decode the signed
+	// payload directly so uint64 profile revisions never round through float64.
+	parts := strings.Split(token, ".")
+	body, err := base64.RawURLEncoding.Strict().DecodeString(parts[1])
 	if err != nil {
 		return nil, ErrInvalid
 	}
 	var c Claims
-	if json.Unmarshal(body, &c) != nil || c.Receiver != receiver || validate(&c) != nil {
+	if httpx.ReadStrictJSON(&http.Request{Body: io.NopCloser(bytes.NewReader(body))}, &c) != nil || c.Receiver != receiver || validate(&c) != nil {
 		return nil, ErrInvalid
 	}
 	return &c, nil
@@ -132,10 +149,13 @@ func (c *Claims) CheckHop(service, resource, requestHash string) error {
 }
 
 func validate(c *Claims) error {
-	if c.Version != 1 || c.TokenUse != TokenUse || c.Subject != "" || c.Origin.Validate() != nil || c.Issuer == "" || len(c.Issuer) > 512 || c.Receiver == "" ||
-		!caller.ValidReference(c.Receiver) || !caller.ValidReference(c.Sender) || c.Resource == "" || !caller.ValidReference(c.Resource) ||
+	if (c.Version != 1 && c.Version != 2) || c.TokenUse != TokenUse || c.Subject != "" || c.Origin.Validate() != nil || c.Issuer == "" || len(c.Issuer) > 512 || c.Receiver == "" ||
+		!caller.ValidReference(c.Receiver) || !caller.ValidReference(c.Sender) || !caller.ValidReference(c.Resource) ||
 		len(c.Audience) != 1 || c.Audience[0] != AudiencePrefix+c.Receiver || !validID(c.ID) || !validID(c.OperationID) || !validHash(c.RequestHash) ||
 		c.Depth < 0 || c.Depth > MaxDepth || c.IssuedAt == nil || c.NotBefore == nil || c.ExpiresAt == nil {
+		return ErrInvalid
+	}
+	if c.Version == 1 && (c.Account != nil || c.Resource == "") || c.Version == 2 && (c.Resource != "" || c.Account.Validate(c.Origin) != nil) {
 		return ErrInvalid
 	}
 	if c.Depth == 0 && (c.Sender != "" || c.ParentOperationID != "") || c.Depth > 0 && (c.Sender == "" || !validID(c.ParentOperationID)) {
@@ -158,7 +178,9 @@ func sign(keys *jwtx.KeyPair, c *Claims) (*Response, error) {
 		return nil, ErrInvalid
 	}
 	var claims jwt.MapClaims
-	if json.Unmarshal(body, &claims) != nil {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	if decoder.Decode(&claims) != nil {
 		return nil, ErrInvalid
 	}
 	token, err := jwtx.Sign(keys, claims)
@@ -179,6 +201,7 @@ func validHash(value string) bool {
 
 func clone(c *Claims) *Claims {
 	copyClaims := *c
+	copyClaims.Account = c.Account.Clone()
 	if c.Origin != nil {
 		id := *c.Origin
 		copyClaims.Origin = &id
@@ -234,4 +257,8 @@ func ProofFromContext(ctx context.Context) (*Proof, bool) {
 		return nil, false
 	}
 	return &Proof{Token: c.token, Claims: clone(c.claims)}, true
+}
+
+func sameAccount(a, b *authntokens.AccountBinding) bool {
+	return a == nil && b == nil || a != nil && b != nil && *a == *b
 }

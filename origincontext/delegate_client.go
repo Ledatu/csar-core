@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ledatu/csar-core/authntokens"
 	"github.com/ledatu/csar-core/caller"
 	"github.com/ledatu/csar-core/csarclient"
 	"github.com/ledatu/csar-core/gatewayctx"
@@ -19,6 +20,7 @@ type gatewayParentKey struct{}
 type gatewayParent struct {
 	token, resource string
 	expires         time.Time
+	account         *authntokens.AccountBinding
 }
 
 // WithGatewayParent adopts an opaque parent only from an already trusted gateway
@@ -30,9 +32,25 @@ func WithGatewayParent(ctx context.Context, incoming *http.Request) (context.Con
 		return nil, ErrInvalid
 	}
 	id, err := gatewayctx.FromRequestChecked(incoming)
-	if err != nil || id.Origin == nil || !time.Now().Before(id.Origin.ExpiresAt) || id.Tenant == "" || !caller.ValidReference(id.Tenant) {
+	if err != nil || id.Origin == nil || id.Origin.Account != nil || !time.Now().Before(id.Origin.ExpiresAt) || id.Tenant == "" || !caller.ValidReference(id.Tenant) {
 		return nil, ErrInvalid
 	}
+	return withGatewayParent(ctx, incoming, &id, id.Tenant)
+}
+
+// WithGatewayAccountParent adopts only a gateway-asserted account binding. It
+// creates no tenant; Authn verifies the opaque parent before every delegation.
+func WithGatewayAccountParent(ctx context.Context, incoming *http.Request) (context.Context, error) {
+	if incoming == nil {
+		return nil, ErrInvalid
+	}
+	id, err := gatewayctx.FromRequestChecked(incoming)
+	if err != nil || id.Tenant != "" || id.Origin == nil || id.Origin.Account.Validate(id.Origin.Caller) != nil || !time.Now().Before(id.Origin.ExpiresAt) {
+		return nil, ErrInvalid
+	}
+	return withGatewayParent(ctx, incoming, &id, "")
+}
+func withGatewayParent(ctx context.Context, incoming *http.Request, id *gatewayctx.Identity, resource string) (context.Context, error) {
 	var values []string
 	for name, items := range incoming.Header {
 		if strings.EqualFold(name, HeaderForwardedAuthorization) {
@@ -46,7 +64,7 @@ func WithGatewayParent(ctx context.Context, incoming *http.Request) (context.Con
 	if token == "" || len(token) > MaxTokenBytes || strings.ContainsAny(token, " \t\r\n") {
 		return nil, ErrInvalid
 	}
-	return context.WithValue(ctx, gatewayParentKey{}, gatewayParent{token: token, resource: id.Tenant, expires: id.Origin.ExpiresAt}), nil
+	return context.WithValue(ctx, gatewayParentKey{}, gatewayParent{token: token, resource: resource, expires: id.Origin.ExpiresAt, account: id.Origin.Account.Clone()}), nil
 }
 
 // DelegateClient reuses an existing authenticated STS router client. It owns no
@@ -125,7 +143,7 @@ func (t *delegateTransport) RoundTrip(req *http.Request) (resp *http.Response, e
 	if err != nil {
 		return nil, ErrInvalid
 	}
-	result, callErr := csarclient.DoJSON[Response](ctx, t.client.issuer, csarclient.Request{Method: http.MethodPost, Path: "/svc/authn/origin-context/delegate", Body: &DelegateRequest{ParentToken: p.token, Receiver: t.receiver, Resource: p.resource, RequestHash: hash}})
+	result, callErr := csarclient.DoJSON[Response](ctx, t.client.issuer, csarclient.Request{Method: http.MethodPost, Path: "/svc/authn/origin-context/delegate", Body: &DelegateRequest{Account: p.account.Clone(), ParentToken: p.token, Receiver: t.receiver, Resource: p.resource, RequestHash: hash}})
 	if callErr != nil {
 		return nil, errors.Join(ErrIssuerUnavailable, ctx.Err())
 	}

@@ -81,12 +81,13 @@ func (c *RootClient) Close() {
 // Issue requires an already verified principal and a source validation deadline.
 // It creates no cache entry and never retries a root issuance automatically.
 func (c *RootClient) Issue(ctx context.Context, in *RootRequest) (*Proof, error) {
-	if c == nil || in == nil || in.Caller.Validate() != nil || in.Receiver == "" || !caller.ValidReference(in.Receiver) || in.Resource == "" || !caller.ValidReference(in.Resource) || !validHash(in.RequestHash) || !time.Now().Before(in.SourceExpiresAt) {
+	if c == nil || in == nil || in.Caller.Validate() != nil || in.Receiver == "" || !caller.ValidReference(in.Receiver) || (in.Account == nil && (in.Resource == "" || !caller.ValidReference(in.Resource)) || in.Account != nil && (in.Resource != "" || in.Account.Validate(in.Caller) != nil)) || !validHash(in.RequestHash) || !time.Now().Before(in.SourceExpiresAt) {
 		return nil, ErrInvalid
 	}
 	request := *in
 	principal := *in.Caller
 	request.Caller = &principal
+	request.Account = in.Account.Clone()
 	ctx, budgetCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer budgetCancel()
 	ctx, cancel := context.WithDeadline(ctx, request.SourceExpiresAt)
@@ -106,7 +107,7 @@ func (c *RootClient) Issue(ctx context.Context, in *RootRequest) (*Proof, error)
 	if contextErr := ctx.Err(); contextErr != nil {
 		return nil, errors.Join(ErrIssuerUnavailable, contextErr)
 	}
-	if err != nil || claims.Depth != 0 || *claims.Origin != principal || claims.Resource != request.Resource || claims.RequestHash != request.RequestHash || !claims.ExpiresAt.Equal(response.ExpiresAt) || response.ExpiresAt.After(request.SourceExpiresAt) {
+	if err != nil || claims.Depth != 0 || *claims.Origin != principal || !sameAccount(claims.Account, request.Account) || claims.Resource != request.Resource || claims.RequestHash != request.RequestHash || !claims.ExpiresAt.Equal(response.ExpiresAt) || response.ExpiresAt.After(request.SourceExpiresAt) {
 		return nil, ErrInvalid
 	}
 	if err := ctx.Err(); err != nil {

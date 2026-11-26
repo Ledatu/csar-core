@@ -30,3 +30,32 @@ func TestV2DelegationBindingsCannotDowngrade(t *testing.T) {
 		t.Fatal("modes silently alias")
 	}
 }
+
+func TestDirectAccessResourceIsExplicitAndNeverAProof(t *testing.T) {
+	now := time.Now()
+	ref := ResourceRef{Namespace: "workspace", ID: "north"}
+	in := DelegationRequestV2{Version: 2, Token: "access", Purpose: AccessResource, ProfileID: "reports", Audience: "https://reports.test", Scope: "reports:read", Namespace: ref.Namespace, Resource: &ref}
+	id := &caller.Identity{Version: 1, CallerKind: caller.Application, CallerID: "app", OwnerSubject: "owner", EffectiveSubject: "owner", CredentialID: "grant", CredentialKind: caller.APIKey, Assurance: caller.Verified}
+	out := DelegationResultV2{Version: 2, Active: true, Purpose: AccessResource, ProfileID: in.ProfileID, ProfileRevision: 1, Audience: in.Audience, Scope: in.Scope, Namespace: in.Namespace, Resource: &ref, AuthorizedScope: &ScopeRef{Type: "tenant", ID: "workspace:north"}, Identity: id, ExpiresAt: now.Add(time.Minute)}
+	if err := out.ValidateFor(&in, now); err != nil {
+		t.Fatal(err)
+	}
+	if IsDelegation(AccessResource) || !IsDelegationV2(AccessResourceV2) {
+		t.Fatal("direct mode leaked into legacy protocol")
+	}
+	out.DelegatedToken = "proof"
+	if out.ValidateFor(&in, now) == nil {
+		t.Fatal("direct access minted proof")
+	}
+	out.DelegatedToken = ""
+	id.CredentialKind = caller.DelegationProof
+	if out.ValidateFor(&in, now) == nil {
+		t.Fatal("proof accepted as reusable access")
+	}
+	id.CredentialKind = caller.APIKey
+	in.Purpose = GrantResource
+	out.Purpose = GrantResource
+	if out.ValidateFor(&in, now) == nil {
+		t.Fatal("access accepted in proof operation")
+	}
+}
