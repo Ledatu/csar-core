@@ -460,3 +460,13 @@ that exceed the legacy reference syntax. Existing safe-reference IDs still pass.
   selects the product name separately from the sender header; HTML escapes both
   name and code. Configured subject stays exact. Production branding/config and
   transport behavior are unchanged by source preparation.
+
+## Explicit identity policy receiver (source only, November 26)
+- browser_directory defaults to subject-only UUID lookup. Providers, aliases and
+  linked-identity projections are explicit bounded configuration; login enablement
+  grants no directory visibility. Contact providers are excluded.
+- identity_import is disabled by default; named importers bind exact service,
+  source and provider authority, configured overrides and explicit write caps.
+  Enabled import requires PostgreSQL, transactional audit and verified client TLS.
+- LoadFromBytesWithIdentityPolicy is the matching full receiver; previous readers
+  reject declarations. Both sections decode strictly. No deployment activation.
