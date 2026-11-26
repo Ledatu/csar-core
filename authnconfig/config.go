@@ -272,7 +272,14 @@ func NewDuration(d time.Duration) Duration {
 
 // LoadFromBytes parses raw YAML bytes into a Config, expanding environment
 // variables, applying defaults, and validating.
-func LoadFromBytes(data []byte) (*Config, error) {
+func LoadFromBytes(data []byte) (*Config, error) { return loadFromBytes(data, false) }
+
+// LoadFromBytesWithCredentialReceiver is only for runtimes implementing the full
+// generic issuer contract. Helpers/default readers continue rejecting enablement.
+func LoadFromBytesWithCredentialReceiver(data []byte) (*Config, error) {
+	return loadFromBytes(data, true)
+}
+func loadFromBytes(data []byte, credentialReceiver bool) (*Config, error) {
 	var cfg Config
 	if err := configutil.UnmarshalYAMLWithEnvStrictSections(data, &cfg, "credentials"); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
@@ -384,15 +391,15 @@ func LoadFromBytes(data []byte) (*Config, error) {
 
 	cfg.Health = cfg.Health.WithDefaults()
 
-	if err := cfg.validate(); err != nil {
+	if err := cfg.validateRuntime(credentialReceiver); err != nil {
 		return nil, fmt.Errorf("config validation: %w", err)
 	}
 
 	return &cfg, nil
 }
 
-func (c *Config) validate() error {
-	if err := c.Credentials.validate(c.TLS.ClientCAFile); err != nil {
+func (c *Config) validateRuntime(receiver bool) error {
+	if err := c.Credentials.validateRuntime(c.TLS.ClientCAFile, receiver); err != nil {
 		return err
 	}
 	if err := c.TLS.Validate(); err != nil {
