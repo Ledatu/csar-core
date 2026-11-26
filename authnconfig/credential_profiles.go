@@ -41,7 +41,16 @@ type CredentialTrustPolicy struct {
 	PeerCN string `yaml:"peer_cn"`
 }
 
+// CredentialManualIssuance fixes the accounting family and maximum fixed lifetime.
+// Connection is the existing shared connection family; it confers no OAuth client
+// or refresh authority. Request bodies cannot select a different family.
+type CredentialManualIssuance struct {
+	Family string   `yaml:"family"`
+	MaxTTL Duration `yaml:"max_ttl"`
+}
+
 type CredentialProfile struct {
+	ManualIssuance         *CredentialManualIssuance   `yaml:"manual_issuance,omitempty"`
 	ID                     string                      `yaml:"id"`
 	AcceptedGrantRevisions []uint64                    `yaml:"accepted_grant_revisions,omitempty"`
 	Revision               uint64                      `yaml:"revision"`
@@ -162,6 +171,15 @@ func (c *CredentialConfig) validateRuntime(generalCAFile string, receiver bool) 
 }
 
 func (p *CredentialProfile) validate() error {
+	if m := p.ManualIssuance; m != nil {
+		if (m.Family != "api_key" && m.Family != "connection") || m.MaxTTL.Duration < time.Second || m.MaxTTL.Duration%time.Second != 0 || m.MaxTTL.Duration > p.GrantTTL.Duration {
+			return fmt.Errorf("credentials: invalid manual issuance policy")
+		}
+		if m.Family == "connection" && (m.MaxTTL.Duration < time.Hour || m.MaxTTL.Duration > 168*time.Hour) {
+			return fmt.Errorf("credentials: manual connection lifetime must be within 1–168 hours")
+		}
+	}
+
 	if p.AcceptedGrantRevisions != nil {
 		if len(p.AcceptedGrantRevisions) < 1 || len(p.AcceptedGrantRevisions) > 32 || !slices.Contains(p.AcceptedGrantRevisions, p.Revision) {
 			return fmt.Errorf("credentials: invalid accepted revisions")

@@ -272,14 +272,20 @@ func NewDuration(d time.Duration) Duration {
 
 // LoadFromBytes parses raw YAML bytes into a Config, expanding environment
 // variables, applying defaults, and validating.
-func LoadFromBytes(data []byte) (*Config, error) { return loadFromBytes(data, false) }
+func LoadFromBytes(data []byte) (*Config, error) { return loadFromBytes(data, false, false) }
 
 // LoadFromBytesWithCredentialReceiver is only for runtimes implementing the full
 // generic issuer contract. Helpers/default readers continue rejecting enablement.
 func LoadFromBytesWithCredentialReceiver(data []byte) (*Config, error) {
-	return loadFromBytes(data, true)
+	return loadFromBytes(data, true, false)
 }
-func loadFromBytes(data []byte, credentialReceiver bool) (*Config, error) {
+
+// LoadFromBytesWithManualIssuance is for receivers that enforce profile-controlled
+// manual family and lifetime. The older receiver rejects enabled manual policy.
+func LoadFromBytesWithManualIssuance(data []byte) (*Config, error) {
+	return loadFromBytes(data, true, true)
+}
+func loadFromBytes(data []byte, credentialReceiver, manualIssuance bool) (*Config, error) {
 	var cfg Config
 	if err := configutil.UnmarshalYAMLWithEnvStrictSections(data, &cfg, "credentials"); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
@@ -395,6 +401,13 @@ func loadFromBytes(data []byte, credentialReceiver bool) (*Config, error) {
 		return nil, fmt.Errorf("config validation: %w", err)
 	}
 
+	if cfg.Credentials != nil && cfg.Credentials.Enabled && !manualIssuance {
+		for i := range cfg.Credentials.Profiles {
+			if cfg.Credentials.Profiles[i].ManualIssuance != nil {
+				return nil, fmt.Errorf("credentials: manual issuance requires a compatible receiver")
+			}
+		}
+	}
 	return &cfg, nil
 }
 
