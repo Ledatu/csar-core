@@ -6,10 +6,12 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/ledatu/csar-core/authntokens"
 	"github.com/ledatu/csar-core/caller"
 	"github.com/ledatu/csar-core/configutil"
+	"github.com/ledatu/csar-core/stsclient"
 	"gopkg.in/yaml.v3"
 )
 
@@ -19,15 +21,16 @@ const CredentialConfigVersion = 1
 // CredentialConfig declares future generic issuer policy. Current loaders reject
 // activation until runtime receivers implement these semantics explicitly.
 type CredentialConfig struct {
-	Version           int                     `yaml:"version"`
-	Enabled           bool                    `yaml:"enabled"`
-	IssuerURL         string                  `yaml:"issuer_url"`
-	ConsentURL        string                  `yaml:"consent_url"`
-	MutationOrigins   []string                `yaml:"mutation_origins"`
-	ConsentCookieName string                  `yaml:"consent_cookie_name"`
-	TrustPolicies     []CredentialTrustPolicy `yaml:"trust_policies"`
-	Profiles          []CredentialProfile     `yaml:"profiles"`
-	Receivers         []CredentialReceiver    `yaml:"receivers"`
+	Decisions         stsclient.ServiceAuthConfig `yaml:"decisions,omitempty"`
+	Version           int                         `yaml:"version"`
+	Enabled           bool                        `yaml:"enabled"`
+	IssuerURL         string                      `yaml:"issuer_url"`
+	ConsentURL        string                      `yaml:"consent_url"`
+	MutationOrigins   []string                    `yaml:"mutation_origins"`
+	ConsentCookieName string                      `yaml:"consent_cookie_name"`
+	TrustPolicies     []CredentialTrustPolicy     `yaml:"trust_policies"`
+	Profiles          []CredentialProfile         `yaml:"profiles"`
+	Receivers         []CredentialReceiver        `yaml:"receivers"`
 }
 
 // Each feature selects one dedicated root and exact verified leaf identity.
@@ -39,16 +42,17 @@ type CredentialTrustPolicy struct {
 }
 
 type CredentialProfile struct {
-	ID             string                      `yaml:"id"`
-	Revision       uint64                      `yaml:"revision"`
-	Audience       string                      `yaml:"audience"`
-	Scopes         []CredentialScope           `yaml:"scopes"`
-	Namespaces     []string                    `yaml:"namespaces"`
-	SelectionModes []authntokens.SelectionMode `yaml:"selection_modes"`
-	AccessTTL      Duration                    `yaml:"access_ttl"`
-	GrantTTL       Duration                    `yaml:"grant_ttl"`
-	ProofTTL       Duration                    `yaml:"proof_ttl"`
-	TrustPolicy    string                      `yaml:"trust_policy"`
+	ID                     string                      `yaml:"id"`
+	AcceptedGrantRevisions []uint64                    `yaml:"accepted_grant_revisions,omitempty"`
+	Revision               uint64                      `yaml:"revision"`
+	Audience               string                      `yaml:"audience"`
+	Scopes                 []CredentialScope           `yaml:"scopes"`
+	Namespaces             []string                    `yaml:"namespaces"`
+	SelectionModes         []authntokens.SelectionMode `yaml:"selection_modes"`
+	AccessTTL              Duration                    `yaml:"access_ttl"`
+	GrantTTL               Duration                    `yaml:"grant_ttl"`
+	ProofTTL               Duration                    `yaml:"proof_ttl"`
+	TrustPolicy            string                      `yaml:"trust_policy"`
 }
 
 // Authz owns the referenced permission policy, not this issuer declaration.
@@ -75,14 +79,23 @@ func (c *CredentialConfig) UnmarshalYAML(node *yaml.Node) error {
 }
 
 func (c *CredentialConfig) validate(generalCAFile string) error {
+	return c.validateRuntime(generalCAFile, false)
+}
+func (c *CredentialConfig) validateRuntime(generalCAFile string, receiver bool) error {
 	if c == nil {
 		return nil
 	}
 	if c.Version != CredentialConfigVersion {
 		return fmt.Errorf("credentials: unsupported version")
 	}
-	if c.Enabled {
+	if c.Enabled && !receiver {
 		return fmt.Errorf("credentials: runtime activation is not supported")
+	}
+	if err := c.Decisions.Validate(); err != nil {
+		return fmt.Errorf("credentials: invalid decision transport")
+	}
+	if c.Enabled && (!c.Decisions.IsConfigured() || !authntokens.ValidAudience(c.Decisions.RouterBaseURL) || !authntokens.ValidAudience(c.Decisions.STSEndpoint) || c.Decisions.RouterTimeout <= 0 || c.Decisions.RouterTimeout > 30*time.Second) {
+		return fmt.Errorf("credentials: bounded routed decisions required")
 	}
 	if !authntokens.ValidAudience(c.IssuerURL) || !authntokens.ValidAudience(c.ConsentURL) ||
 		!strings.HasPrefix(c.ConsentCookieName, "__Host-") || len(c.ConsentCookieName) > 128 || !authntokens.ValidProfileID(strings.TrimPrefix(c.ConsentCookieName, "__Host-")) {
@@ -149,6 +162,17 @@ func (c *CredentialConfig) validate(generalCAFile string) error {
 }
 
 func (p *CredentialProfile) validate() error {
+	if p.AcceptedGrantRevisions != nil {
+		if len(p.AcceptedGrantRevisions) < 1 || len(p.AcceptedGrantRevisions) > 32 || !slices.Contains(p.AcceptedGrantRevisions, p.Revision) {
+			return fmt.Errorf("credentials: invalid accepted revisions")
+		}
+		for i, r := range p.AcceptedGrantRevisions {
+			if r == 0 || r > p.Revision || slices.Contains(p.AcceptedGrantRevisions[:i], r) {
+				return fmt.Errorf("credentials: invalid accepted revisions")
+			}
+		}
+	}
+
 	if !authntokens.ValidProfileID(p.ID) || p.Revision == 0 || !authntokens.ValidAudience(p.Audience) || !authntokens.ValidNamespaces(p.Namespaces) ||
 		p.AccessTTL.Duration <= 0 || p.GrantTTL.Duration <= 0 || p.ProofTTL.Duration <= 0 || p.AccessTTL.Duration > p.GrantTTL.Duration || p.ProofTTL.Duration > p.AccessTTL.Duration {
 		return fmt.Errorf("credentials: invalid profile binding or lifetimes")
@@ -169,4 +193,45 @@ func (p *CredentialProfile) validate() error {
 		}
 	}
 	return nil
+}
+
+// Narrow returns derived effective consent, preserving the immutable original
+// revision. It establishes no current permission or resource existence.
+func (p *CredentialProfile) Narrow(g *authntokens.GrantConstraints) (*authntokens.GrantConstraints, error) {
+	deny := fmt.Errorf("credentials: consent is incompatible with current policy")
+	if p == nil || p.validate() != nil || g.Validate() != nil || g.ProfileID != p.ID || g.Audience != p.Audience || !p.AcceptsGrantRevision(g.ProfileRevision) || !slices.Contains(p.SelectionModes, g.Selection.Mode) {
+		return nil, deny
+	}
+	out := *g
+	out.Scopes = nil
+	out.Namespaces = nil
+	out.Selection.Resources = nil
+	for _, scope := range g.Scopes {
+		if slices.ContainsFunc(p.Scopes, func(s CredentialScope) bool { return s.Scope == scope }) {
+			out.Scopes = append(out.Scopes, scope)
+		}
+	}
+	for _, ns := range g.Namespaces {
+		if slices.Contains(p.Namespaces, ns) {
+			out.Namespaces = append(out.Namespaces, ns)
+		}
+	}
+	for _, ref := range g.Selection.Resources {
+		if slices.Contains(out.Namespaces, ref.Namespace) {
+			out.Selection.Resources = append(out.Selection.Resources, ref)
+		}
+	}
+	if out.Validate() != nil {
+		return nil, deny
+	}
+	return &out, nil
+}
+func (p *CredentialProfile) AcceptsGrantRevision(r uint64) bool {
+	if p == nil || r == 0 {
+		return false
+	}
+	if p.AcceptedGrantRevisions == nil {
+		return r == p.Revision
+	}
+	return slices.Contains(p.AcceptedGrantRevisions, r)
 }

@@ -1,7 +1,10 @@
 package authnconfig
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"github.com/ledatu/csar-core/authntokens"
 	"slices"
 	"strings"
 	"testing"
@@ -251,5 +254,48 @@ func TestCredentialMaximumDeclaration(t *testing.T) {
 	}
 	if _, err := LoadFromBytes(body); err != nil {
 		t.Fatal("maximum declaration rejected", err)
+	}
+}
+
+func TestAcceptedGrantRevisionsAndConsentNarrowing(t *testing.T) {
+	cfg, err := LoadFromBytes([]byte(credentialBase + credentialDeclaration))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := cfg.Credentials.Profiles[0]
+	p.Revision = 3
+	p.AcceptedGrantRevisions = []uint64{1, 3}
+	g := authntokens.GrantConstraints{Version: 1, ProfileID: p.ID, ProfileRevision: 1, Audience: p.Audience, Scopes: []string{"reports:read", "removed:read"}, Namespaces: []string{"workspace", "removed"}, Selection: authntokens.ResourceSelection{Mode: authntokens.Selected, Resources: []authntokens.ResourceRef{{Namespace: "workspace", ID: "north-branch"}, {Namespace: "removed", ID: "north-branch"}}}}
+	before, _ := json.Marshal(g)
+	out, err := p.Narrow(&g)
+	if err != nil || out.ProfileRevision != 1 || len(out.Scopes) != 1 || len(out.Namespaces) != 1 || len(out.Selection.Resources) != 1 {
+		t.Fatal("narrowing changed authority", err)
+	}
+	after, _ := json.Marshal(g)
+	if !bytes.Equal(before, after) {
+		t.Fatal("stored consent mutated")
+	}
+	p.Namespaces = append(p.Namespaces, "new")
+	p.Scopes = append(p.Scopes, CredentialScope{Scope: "new:read", DecisionProfile: "new"})
+	out, err = p.Narrow(&g)
+	if err != nil || len(out.Scopes) != 1 || len(out.Namespaces) != 1 {
+		t.Fatal("expansion widened old grant", err)
+	}
+	for _, revisions := range [][]uint64{nil, {}, {1, 1, 3}, {1, 4, 3}, {0, 3}, {1, 2}} {
+		p.AcceptedGrantRevisions = revisions
+		if _, err := p.Narrow(&g); err == nil {
+			t.Fatal("incompatible revision accepted", revisions)
+		}
+	}
+	p.AcceptedGrantRevisions = []uint64{1, 3}
+	p.Audience += "/changed"
+	if _, err := p.Narrow(&g); err == nil {
+		t.Fatal("audience changed")
+	}
+	for _, literal := range []string{"[]", "[0, 1]", "[1, 1]", "[1, 2]", "[2]"} {
+		raw := strings.Replace(credentialDeclaration, "revision: 1", "revision: 1\n      accepted_grant_revisions: "+literal, 1)
+		if _, err := LoadFromBytes([]byte(credentialBase + raw)); err == nil {
+			t.Fatal("invalid revision declaration", literal)
+		}
 	}
 }

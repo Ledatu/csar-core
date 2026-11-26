@@ -1,3 +1,18 @@
+## Credential revision compatibility and v2 receiver contract (U05b/U07)
+
+Credential profiles may explicitly accept 1–32 compatible grant revisions,
+including the current revision; omitted lists accept only the current one.
+Pure Narrow intersects immutable stored consent with current policy without
+rewriting the original revision or gaining expanded scopes/namespaces. It grants
+no current permission. Runtime loader opt-in accepts enabled declarations only
+for a compatible receiver with bounded routed STS decision transport; normal
+helper/default loading still rejects activation. Dedicated ingress, session,
+store/outbox, atomic startup and live Authz remain receiver responsibilities.
+Version-2 delegation request/result values preserve exact namespace/profile,
+audience/scope/resource and classified owner/caller bindings. New distinct v2
+route modes reject downgrade; v1 types and outbound route-token wire are unchanged.
+No runtime or deployed configuration is activated by these primitives.
+
 ## Service-decision receiver prerequisites (U03, source only)
 
 `authzconfig.LoadFromBytesWithServiceDecisions` is an explicit receiver opt-in
