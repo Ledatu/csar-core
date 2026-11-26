@@ -470,3 +470,14 @@ that exceed the legacy reference syntax. Existing safe-reference IDs still pass.
   Enabled import requires PostgreSQL, transactional audit and verified client TLS.
 - LoadFromBytesWithIdentityPolicy is the matching full receiver; previous readers
   reject declarations. Both sections decode strictly. No deployment activation.
+
+## Current per-profile owner admission — review preparation
+
+Optional credential profile `admission` names an Authz decision profile, literal
+resource reference and exact required granting scope. It is current authority,
+independent of stored consent/data selection. Only
+`LoadFromBytesWithProfileAdmission` opts into these declarations; older exported
+loaders reject them even on a disabled declaration. Policy/namespace/resource/
+scope fields are strictly validated, with no application defaults. The matching
+Authn receiver enforces gates; this schema does not grant access itself. No DDL,
+Redis/counter, signing-key or deployed configuration changes.

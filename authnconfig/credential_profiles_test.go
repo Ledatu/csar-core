@@ -363,3 +363,22 @@ func TestManualIssuanceRequiresCompatibleReceiver(t *testing.T) {
 		t.Fatal("compatible receiver rejected", err)
 	}
 }
+
+func TestProfileAdmissionRequiresCompatibleReaderAndExactPolicy(t *testing.T) {
+	admission := "      admission:\n        decision_profile: owner-entry\n        resource: {namespace: enrollment, id: restricted-reports}\n        required_scope: {type: platform, id: ''}\n"
+	data := []byte(credentialBase + strings.Replace(credentialDeclaration, "      revision: 1\n", "      revision: 1\n"+admission, 1))
+	for _, reader := range []func([]byte) (*Config, error){LoadFromBytes, LoadFromBytesWithCredentialReceiver, LoadFromBytesWithManualIssuance, LoadFromBytesWithPublicOAuth, LoadFromBytesWithIdentityPolicy} {
+		if _, err := reader(data); err == nil {
+			t.Fatal("older reader accepted admission")
+		}
+	}
+	cfg, err := LoadFromBytesWithProfileAdmission(data)
+	if err != nil || cfg.Credentials.Profiles[0].Admission.Resource.ID != "restricted-reports" {
+		t.Fatal("policy lost", err)
+	}
+	for _, change := range [][2]string{{"decision_profile: owner-entry", "decision_profile: ''"}, {"namespace: enrollment", "namespace: '*'"}, {"id: restricted-reports", "id: ''"}, {"type: platform", "type: tenant"}, {"id: ''}", "id: nonempty}"}, {"decision_profile: owner-entry", "decision_profile: owner-entry\n        unknown: true"}} {
+		if _, err := LoadFromBytesWithProfileAdmission([]byte(strings.Replace(string(data), change[0], change[1], 1))); err == nil {
+			t.Fatal("unsafe admission accepted", change[0])
+		}
+	}
+}

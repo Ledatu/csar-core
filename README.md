@@ -367,3 +367,19 @@ accepts only this bounded allowlist and ignores message/detail content. These
 codes describe credential resolution before the upstream API request; ordinary
 marketplace HTTP statuses retain their own meaning. Provider 429 mint errors also
 match `tokenmint.ErrThrottled` without losing `ErrUpstream` or Retry-After behavior.
+
+Credential profiles may declare a current owner admission rule:
+
+```yaml
+admission:
+  decision_profile: owner-entry
+  resource: {namespace: enrollment, id: restricted-reports}
+  required_scope: {type: platform, id: ''}
+```
+
+The providing Authz policy owns the permission and resource-to-scope mapping.
+Admission is independent of consented data resources; an absent rule adds no gate.
+Receivers must use `authnconfig.LoadFromBytesWithProfileAdmission` and enforce
+current admission on issuance, consent and use. Older loaders reject the rule.
+It never prevents authority reduction by owner denial/revocation or refresh-replay
+handling. Policy changes require restart, as with the rest of credential policy.

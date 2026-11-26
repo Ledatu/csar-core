@@ -278,35 +278,41 @@ func NewDuration(d time.Duration) Duration {
 // LoadFromBytes parses raw YAML bytes into a Config, expanding environment
 // variables, applying defaults, and validating.
 func LoadFromBytes(data []byte) (*Config, error) {
-	return loadFromBytes(data, false, false, false, false)
+	return loadFromBytes(data, false, false, false, false, false)
 }
 
 // LoadFromBytesWithCredentialReceiver is only for runtimes implementing the full
 // generic issuer contract. Helpers/default readers continue rejecting enablement.
 func LoadFromBytesWithCredentialReceiver(data []byte) (*Config, error) {
-	return loadFromBytes(data, true, false, false, false)
+	return loadFromBytes(data, true, false, false, false, false)
 }
 
 // LoadFromBytesWithManualIssuance is for receivers that enforce profile-controlled
 // manual family and lifetime. The older receiver rejects enabled manual policy.
 func LoadFromBytesWithManualIssuance(data []byte) (*Config, error) {
-	return loadFromBytes(data, true, true, false, false)
+	return loadFromBytes(data, true, true, false, false, false)
 }
 
 // LoadFromBytesWithPublicOAuth is for receivers implementing standard OAuth,
 // terminal denial and shared bounded public-client admission. Older readers
 // reject public activation rather than dropping its profile/alias policy.
 func LoadFromBytesWithPublicOAuth(data []byte) (*Config, error) {
-	return loadFromBytes(data, true, true, true, false)
+	return loadFromBytes(data, true, true, true, false, false)
 }
 
 // LoadFromBytesWithIdentityPolicy is for receivers enforcing explicit directory
 // projections and per-importer provider/write authority. Previous readers reject
 // those declarations rather than silently discarding restrictions.
 func LoadFromBytesWithIdentityPolicy(data []byte) (*Config, error) {
-	return loadFromBytes(data, true, true, true, true)
+	return loadFromBytes(data, true, true, true, true, false)
 }
-func loadFromBytes(data []byte, credentialReceiver, manualIssuance, publicOAuth, identityPolicy bool) (*Config, error) {
+
+// LoadFromBytesWithProfileAdmission is for receivers enforcing current
+// per-profile owner admission on issuance, consent and credential use.
+func LoadFromBytesWithProfileAdmission(data []byte) (*Config, error) {
+	return loadFromBytes(data, true, true, true, true, true)
+}
+func loadFromBytes(data []byte, credentialReceiver, manualIssuance, publicOAuth, identityPolicy, profileAdmission bool) (*Config, error) {
 	var cfg Config
 	if err := configutil.UnmarshalYAMLWithEnvStrictSections(data, &cfg, "credentials", "browser_directory", "identity_import"); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
@@ -434,6 +440,13 @@ func loadFromBytes(data []byte, credentialReceiver, manualIssuance, publicOAuth,
 	}
 	if (cfg.BrowserDirectory != nil || cfg.IdentityImport != nil) && !identityPolicy {
 		return nil, fmt.Errorf("identity policy requires a compatible receiver")
+	}
+	if cfg.Credentials != nil && !profileAdmission {
+		for i := range cfg.Credentials.Profiles {
+			if cfg.Credentials.Profiles[i].Admission != nil {
+				return nil, fmt.Errorf("credentials: profile admission requires a compatible receiver")
+			}
+		}
 	}
 	return &cfg, nil
 }
