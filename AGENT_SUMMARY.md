@@ -1,3 +1,14 @@
+## Full service-capability receiver prerequisite (U10)
+
+The explicit `LoadFromBytesWithServiceCapabilities` permits configured decision,
+subject/assignment reads and tenant role grant/revoke only with pinned verified
+admin TLS ingress. The older default and decide-only loaders keep their activation
+restrictions. Runtime handlers must enforce exact per-service operation/profile,
+subject mode and resource mapping, with role subsets under the global ceiling.
+`ValidateServicePolicyIngress` shares the schema/startup ingress guard; physical
+verified chains and peer pin remain per-request checks. No endpoint or deployed
+configuration changes here.
+
 ## Shared generic issuer preflight
 
 The explicit credential-receiver loader additionally requires secure session
