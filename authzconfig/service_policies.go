@@ -13,6 +13,26 @@ import (
 
 const ServicePoliciesVersion = 1
 
+type servicePolicyReceiver uint8
+
+const (
+	servicePolicyDisabled servicePolicyReceiver = iota
+	servicePolicyDecisions
+	servicePolicyCapabilities
+)
+
+// ValidateServicePolicyIngress is shared by schema readers and runtime startup.
+// Verified chains and the pinned peer must still be checked on every request.
+func ValidateServicePolicyIngress(c *Config) error {
+	if c.ServicePolicies == nil || !c.ServicePolicies.Enabled {
+		return nil
+	}
+	if !c.Admin.Enabled || !c.Admin.TLS.IsEnabled() || c.Admin.TLS.ClientCAFile == "" || c.Admin.AllowedClientCN == "" || !caller.ValidReference(c.Admin.AllowedClientCN) {
+		return fmt.Errorf("service capabilities require a pinned verified admin TLS listener")
+	}
+	return c.Admin.TLS.Validate()
+}
+
 // ServicePolicyConfig is a declaration, not a second permission engine. Runtime
 // enablement stays rejected until the service implements the capability checks.
 type ServicePolicyConfig struct {
@@ -66,17 +86,17 @@ func (c *ServicePolicyConfig) UnmarshalYAML(node *yaml.Node) error {
 }
 
 func (c *ServicePolicyConfig) validate(roles map[string]struct{}, ceiling []string) error {
-	return c.validateRuntime(roles, ceiling, false)
+	return c.validateRuntime(roles, ceiling, servicePolicyDisabled)
 }
 
-func (c *ServicePolicyConfig) validateRuntime(roles map[string]struct{}, ceiling []string, decisionsSupported bool) error {
+func (c *ServicePolicyConfig) validateRuntime(roles map[string]struct{}, ceiling []string, receiver servicePolicyReceiver) error {
 	if c == nil {
 		return nil
 	}
 	if c.Version != ServicePoliciesVersion {
 		return fmt.Errorf("service_policies: unsupported version")
 	}
-	if c.Enabled && !decisionsSupported {
+	if c.Enabled && receiver == servicePolicyDisabled {
 		return fmt.Errorf("service_policies: runtime activation is not supported")
 	}
 	if len(c.DecisionProfiles) < 1 || len(c.DecisionProfiles) > 32 || len(c.Services) > 64 {
@@ -101,7 +121,7 @@ func (c *ServicePolicyConfig) validateRuntime(roles map[string]struct{}, ceiling
 		operations := make(map[string]bool, len(service.Operations))
 		for i := range service.Operations {
 			op := &service.Operations[i]
-			if c.Enabled && op.Operation != "decide" {
+			if c.Enabled && receiver != servicePolicyCapabilities && op.Operation != "decide" {
 				return fmt.Errorf("service_policies: receiver does not support configured operation")
 			}
 			if operations[op.Operation] {

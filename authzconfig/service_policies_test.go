@@ -296,3 +296,29 @@ func TestExplicitDecisionReceiverCapability(t *testing.T) {
 		t.Fatal("default/helper loader silently accepted runtime semantics")
 	}
 }
+
+func TestExplicitFullServiceReceiver(t *testing.T) {
+	base := strings.Replace(servicePolicyBase, "admin:\n", "admin:\n  enabled: true\n  allowed_client_cn: gateway\n  tls: {cert_file: server.pem, key_file: server-key.pem, client_ca_file: router-ca.pem}\n", 1)
+	declaration := strings.Replace(servicePolicyDeclaration, "enabled: false", "enabled: true", 1)
+	body := []byte(base + declaration)
+	cfg, err := LoadFromBytesWithServiceCapabilities(body)
+	if err != nil || len(cfg.ServicePolicies.Services[0].Operations) != 6 {
+		t.Fatal("full receiver rejected isolated operations", err)
+	}
+	for _, old := range []func([]byte) (*Config, error){LoadFromBytes, LoadFromBytesWithServiceDecisions} {
+		if _, err := old(body); err == nil {
+			t.Fatal("older receiver accepted unsupported operations")
+		}
+	}
+	for _, change := range []struct{ old, new string }{
+		{"enabled: true", "enabled: false"},
+		{"allowed_client_cn: gateway", "allowed_client_cn: ''"},
+		{"client_ca_file: router-ca.pem", "client_ca_file: ''"},
+		{"cert_file: server.pem", "cert_file: ''"},
+		{"roles: [report_reader]", "roles: [privileged_operator]"},
+	} {
+		if _, err := LoadFromBytesWithServiceCapabilities([]byte(strings.Replace(base+declaration, change.old, change.new, 1))); err == nil {
+			t.Fatal("unsafe service receiver accepted", change.old)
+		}
+	}
+}

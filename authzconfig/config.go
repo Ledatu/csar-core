@@ -112,24 +112,30 @@ type BootstrapAssignment struct {
 // LoadFromBytes parses raw YAML bytes into a Config, expanding environment
 // variables, applying defaults, and validating.
 func LoadFromBytes(data []byte) (*Config, error) {
-	return loadFromBytes(data, false)
+	return loadFromBytes(data, servicePolicyDisabled)
 }
 
 // LoadFromBytesWithServiceDecisions is for receivers that enforce the generic
 // decision operation. Helpers and older runtimes keep the default loader, which
 // rejects activation. Future listing/mutation operations remain unsupported.
 func LoadFromBytesWithServiceDecisions(data []byte) (*Config, error) {
-	return loadFromBytes(data, true)
+	return loadFromBytes(data, servicePolicyDecisions)
 }
 
-func loadFromBytes(data []byte, serviceDecisions bool) (*Config, error) {
+// LoadFromBytesWithServiceCapabilities opts in to all six implemented service
+// operations. Older decision-only readers continue rejecting list/write activation.
+func LoadFromBytesWithServiceCapabilities(data []byte) (*Config, error) {
+	return loadFromBytes(data, servicePolicyCapabilities)
+}
+
+func loadFromBytes(data []byte, receiver servicePolicyReceiver) (*Config, error) {
 	var cfg Config
 	if err := configutil.UnmarshalYAMLWithEnvStrictSections(data, &cfg, "service_policies"); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 	applyDefaults(&cfg)
 
-	if err := cfg.validate(serviceDecisions); err != nil {
+	if err := cfg.validate(receiver); err != nil {
 		return nil, fmt.Errorf("config validation: %w", err)
 	}
 
@@ -159,7 +165,7 @@ func applyDefaults(cfg *Config) {
 	}
 }
 
-func (c *Config) validate(serviceDecisions bool) error {
+func (c *Config) validate(receiver servicePolicyReceiver) error {
 	if err := c.TLS.Validate(); err != nil {
 		return err
 	}
@@ -203,8 +209,14 @@ func (c *Config) validate(serviceDecisions bool) error {
 			return fmt.Errorf("admin.service_assignable_roles[%d]: role %q is not defined in policy.roles", i, role)
 		}
 	}
-	if err := c.ServicePolicies.validateRuntime(roleNames, c.Admin.ServiceAssignableRoles, serviceDecisions); err != nil {
+	if err := c.ServicePolicies.validateRuntime(roleNames, c.Admin.ServiceAssignableRoles, receiver); err != nil {
 		return err
+	}
+
+	if receiver == servicePolicyCapabilities {
+		if err := ValidateServicePolicyIngress(c); err != nil {
+			return err
+		}
 	}
 
 	for i, ba := range c.BootstrapAssignments {
