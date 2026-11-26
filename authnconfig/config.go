@@ -399,6 +399,12 @@ func loadFromBytes(data []byte, credentialReceiver bool) (*Config, error) {
 }
 
 func (c *Config) validateRuntime(receiver bool) error {
+	if receiver && c.Credentials != nil && c.Credentials.Enabled && c.Credentials.ConsentCookieName == c.Cookie.Name {
+		return fmt.Errorf("generic credentials require a separate consent cookie")
+	}
+	if receiver && c.Credentials != nil && c.Credentials.Enabled && (!c.AuditOutboxEnabled || !c.Cookie.Secure || !c.TLS.IsEnabled() || c.TLS.ClientCAFile == "") {
+		return fmt.Errorf("generic credentials require secure sessions, verified TLS and transactional audit")
+	}
 	if err := c.Credentials.validateRuntime(c.TLS.ClientCAFile, receiver); err != nil {
 		return err
 	}
