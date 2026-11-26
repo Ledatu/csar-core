@@ -47,6 +47,8 @@ type Config struct {
 	EmailOTP               *EmailOTPConfig                `yaml:"email_otp,omitempty"`
 	LegacyLogin            LegacyLoginConfig              `yaml:"legacy_login,omitempty"`
 	LegacyUsersSync        LegacyUsersSyncConfig          `yaml:"legacy_users_sync,omitempty"`
+	BrowserDirectory       *BrowserDirectoryConfig        `yaml:"browser_directory,omitempty"`
+	IdentityImport         *IdentityImportConfig          `yaml:"identity_import,omitempty"`
 	RouteTokens            map[string]RouteTokenConfig    `yaml:"route_tokens,omitempty"`
 	Credentials            *CredentialConfig              `yaml:"credentials,omitempty"`
 }
@@ -275,29 +277,38 @@ func NewDuration(d time.Duration) Duration {
 
 // LoadFromBytes parses raw YAML bytes into a Config, expanding environment
 // variables, applying defaults, and validating.
-func LoadFromBytes(data []byte) (*Config, error) { return loadFromBytes(data, false, false, false) }
+func LoadFromBytes(data []byte) (*Config, error) {
+	return loadFromBytes(data, false, false, false, false)
+}
 
 // LoadFromBytesWithCredentialReceiver is only for runtimes implementing the full
 // generic issuer contract. Helpers/default readers continue rejecting enablement.
 func LoadFromBytesWithCredentialReceiver(data []byte) (*Config, error) {
-	return loadFromBytes(data, true, false, false)
+	return loadFromBytes(data, true, false, false, false)
 }
 
 // LoadFromBytesWithManualIssuance is for receivers that enforce profile-controlled
 // manual family and lifetime. The older receiver rejects enabled manual policy.
 func LoadFromBytesWithManualIssuance(data []byte) (*Config, error) {
-	return loadFromBytes(data, true, true, false)
+	return loadFromBytes(data, true, true, false, false)
 }
 
 // LoadFromBytesWithPublicOAuth is for receivers implementing standard OAuth,
 // terminal denial and shared bounded public-client admission. Older readers
 // reject public activation rather than dropping its profile/alias policy.
 func LoadFromBytesWithPublicOAuth(data []byte) (*Config, error) {
-	return loadFromBytes(data, true, true, true)
+	return loadFromBytes(data, true, true, true, false)
 }
-func loadFromBytes(data []byte, credentialReceiver, manualIssuance, publicOAuth bool) (*Config, error) {
+
+// LoadFromBytesWithIdentityPolicy is for receivers enforcing explicit directory
+// projections and per-importer provider/write authority. Previous readers reject
+// those declarations rather than silently discarding restrictions.
+func LoadFromBytesWithIdentityPolicy(data []byte) (*Config, error) {
+	return loadFromBytes(data, true, true, true, true)
+}
+func loadFromBytes(data []byte, credentialReceiver, manualIssuance, publicOAuth, identityPolicy bool) (*Config, error) {
 	var cfg Config
-	if err := configutil.UnmarshalYAMLWithEnvStrictSections(data, &cfg, "credentials"); err != nil {
+	if err := configutil.UnmarshalYAMLWithEnvStrictSections(data, &cfg, "credentials", "browser_directory", "identity_import"); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 
@@ -421,6 +432,9 @@ func loadFromBytes(data []byte, credentialReceiver, manualIssuance, publicOAuth 
 			}
 		}
 	}
+	if (cfg.BrowserDirectory != nil || cfg.IdentityImport != nil) && !identityPolicy {
+		return nil, fmt.Errorf("identity policy requires a compatible receiver")
+	}
 	return &cfg, nil
 }
 
@@ -529,6 +543,9 @@ func (c *Config) validateRuntime(receiver bool) error {
 	}
 	if c.Database.Driver == "postgres" && c.LegacyUsersSync.Enabled && c.LegacyUsersSync.Apply.Enabled && strings.TrimSpace(c.LegacyUsersSync.LockDatabaseDSN) == "" {
 		return fmt.Errorf("legacy_users_sync.lock_database_dsn is required for PostgreSQL apply (session pooling or direct connection)")
+	}
+	if err := c.validateIdentityPolicy(); err != nil {
+		return err
 	}
 	if err := c.EmailOTP.validate(); err != nil {
 		return err
