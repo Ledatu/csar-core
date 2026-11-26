@@ -300,7 +300,7 @@ func TestAcceptedGrantRevisionsAndConsentNarrowing(t *testing.T) {
 	}
 }
 
-func TestCredentialReceiverPreflightIsSharedWithHelper(t *testing.T) {
+func credentialReceiverFixture() (common, declaration string) {
 	transport := `router_base_url: https://router.example.test
 sts_endpoint: https://id.example.test/sts/token
 audience: https://router.example.test
@@ -309,9 +309,13 @@ assertion_audience: https://id.example.test/sts/token
 router_timeout: 5s
 jwt: {private_key_file: /service/key.pem, public_key_file: /service/public.pem}
 `
-	declaration := strings.Replace(credentialDeclaration, "enabled: false", "enabled: true", 1)
+	declaration = strings.Replace(credentialDeclaration, "enabled: false", "enabled: true", 1)
 	declaration += "  decisions:\n" + "    " + strings.ReplaceAll(strings.TrimSpace(transport), "\n", "\n    ") + "\n"
-	common := credentialBase + "cookie: {secure: true}\naudit_outbox_enabled: true\ntls: {enabled: true, cert_file: /server/cert.pem, key_file: /server/key.pem, client_ca_file: /general/ca.pem}\naudit:\n  " + strings.ReplaceAll(strings.TrimSpace(transport), "\n", "\n  ") + "\n"
+	common = credentialBase + "cookie: {secure: true}\naudit_outbox_enabled: true\ntls: {enabled: true, cert_file: /server/cert.pem, key_file: /server/key.pem, client_ca_file: /general/ca.pem}\naudit:\n  " + strings.ReplaceAll(strings.TrimSpace(transport), "\n", "\n  ") + "\n"
+	return common, declaration
+}
+func TestCredentialReceiverPreflightIsSharedWithHelper(t *testing.T) {
+	common, declaration := credentialReceiverFixture()
 	if _, err := LoadFromBytesWithCredentialReceiver([]byte(common + declaration)); err != nil {
 		t.Fatal("compatible receiver preflight rejected", err)
 	}
@@ -322,5 +326,40 @@ jwt: {private_key_file: /service/key.pem, public_key_file: /service/public.pem}
 		if _, err := LoadFromBytesWithCredentialReceiver([]byte(strings.Replace(common, change.old, change.new, 1) + declaration)); err == nil {
 			t.Fatal("unsafe receiver declaration accepted", change.old)
 		}
+	}
+}
+
+func TestManualIssuanceProfilePolicy(t *testing.T) {
+	for _, policy := range []string{"{family: api_key, max_ttl: 24h}", "{family: connection, max_ttl: 1h}", "{family: connection, max_ttl: 168h}"} {
+		declaration := strings.Replace(credentialDeclaration, "      revision:", "      manual_issuance: "+policy+"\n      revision:", 1)
+		// Use a seven-day parent so both historical manual connection boundaries fit.
+		declaration = strings.Replace(declaration, "grant_ttl: 24h", "grant_ttl: 168h", 1)
+		cfg, err := LoadFromBytes([]byte(credentialBase + declaration))
+		if err != nil || cfg.Credentials.Profiles[0].ManualIssuance == nil {
+			t.Fatal(policy, err)
+		}
+	}
+	for _, policy := range []string{"{family: oauth, max_ttl: 1h}", "{family: connection}", "{family: connection, max_ttl: 30m}", "{family: connection, max_ttl: 169h}", "{family: connection, max_ttl: -1h}", "{family: api_key, max_ttl: 1500ms}", "{family: api_key, max_ttl: 169h}", "{family: api_key, max_ttl: 1h, allow_refresh: true}"} {
+		declaration := strings.Replace(credentialDeclaration, "      revision:", "      manual_issuance: "+policy+"\n      revision:", 1)
+		declaration = strings.Replace(declaration, "grant_ttl: 24h", "grant_ttl: 168h", 1)
+		if _, err := LoadFromBytes([]byte(credentialBase + declaration)); err == nil {
+			t.Fatal("unsafe manual policy accepted", policy)
+		}
+	}
+	cfg, err := LoadFromBytes([]byte(credentialBase + credentialDeclaration))
+	if err != nil || cfg.Credentials.Profiles[0].ManualIssuance != nil {
+		t.Fatal("omission changed legacy policy", err)
+	}
+}
+
+func TestManualIssuanceRequiresCompatibleReceiver(t *testing.T) {
+	common, declaration := credentialReceiverFixture()
+	declaration = strings.Replace(declaration, "      revision:", "      manual_issuance: {family: connection, max_ttl: 24h}\n      revision:", 1)
+	body := []byte(common + declaration)
+	if _, err := LoadFromBytesWithCredentialReceiver(body); err == nil {
+		t.Fatal("old receiver ignored manual policy")
+	}
+	if _, err := LoadFromBytesWithManualIssuance(body); err != nil {
+		t.Fatal("compatible receiver rejected", err)
 	}
 }

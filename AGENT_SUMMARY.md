@@ -1,3 +1,15 @@
+## Profile-controlled manual issuance
+
+Optional `manual_issuance` fixes `family: api_key|connection` and `max_ttl` per
+credential profile. Omission retains API-key issuance bounded by access/grant TTL.
+Explicit maximum is positive whole seconds within grant TTL; connection maxima
+are 1–168 hours. Connection uses the existing immutable connection accounting
+family without client/code/refresh authority. Request input can only shorten the
+fixed deadline; family is server policy. Old strict readers reject the new field; the previous credential receiver also
+rejects enabled manual policy. `LoadFromBytesWithManualIssuance` explicitly opts
+in only after its runtime enforces these semantics.
+No storage, counter, Redis or deployed configuration changes.
+
 ## Full service-capability receiver prerequisite (U10)
 
 The explicit `LoadFromBytesWithServiceCapabilities` permits configured decision,
