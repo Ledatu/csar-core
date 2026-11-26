@@ -1,3 +1,11 @@
+## Shared generic issuer preflight
+
+The explicit credential-receiver loader additionally requires secure session
+cookies, verified TLS with client CA, and transactional audit before accepting
+enabled declarations. This preflight belongs in the shared schema so runtime and
+helper validation cannot disagree. Physical trust/store/client readiness remains
+an Authn startup check. The default loader still rejects enablement.
+
 ## Credential revision compatibility and v2 receiver contract (U05b/U07)
 
 Credential profiles may explicitly accept 1–32 compatible grant revisions,

@@ -299,3 +299,28 @@ func TestAcceptedGrantRevisionsAndConsentNarrowing(t *testing.T) {
 		}
 	}
 }
+
+func TestCredentialReceiverPreflightIsSharedWithHelper(t *testing.T) {
+	transport := `router_base_url: https://router.example.test
+sts_endpoint: https://id.example.test/sts/token
+audience: https://router.example.test
+service_name: issuer
+assertion_audience: https://id.example.test/sts/token
+router_timeout: 5s
+jwt: {private_key_file: /service/key.pem, public_key_file: /service/public.pem}
+`
+	declaration := strings.Replace(credentialDeclaration, "enabled: false", "enabled: true", 1)
+	declaration += "  decisions:\n" + "    " + strings.ReplaceAll(strings.TrimSpace(transport), "\n", "\n    ") + "\n"
+	common := credentialBase + "cookie: {secure: true}\naudit_outbox_enabled: true\ntls: {enabled: true, cert_file: /server/cert.pem, key_file: /server/key.pem, client_ca_file: /general/ca.pem}\naudit:\n  " + strings.ReplaceAll(strings.TrimSpace(transport), "\n", "\n  ") + "\n"
+	if _, err := LoadFromBytesWithCredentialReceiver([]byte(common + declaration)); err != nil {
+		t.Fatal("compatible receiver preflight rejected", err)
+	}
+	if _, err := LoadFromBytes([]byte(common + declaration)); err == nil {
+		t.Fatal("default reader activated issuer")
+	}
+	for _, change := range []struct{ old, new string }{{"cookie: {secure: true}", "cookie: {name: __Host-reports-consent, secure: true}"}, {"cookie: {secure: true}", "cookie: {secure: false}"}, {"audit_outbox_enabled: true", "audit_outbox_enabled: false"}, {"tls: {enabled: true, cert_file: /server/cert.pem, key_file: /server/key.pem, client_ca_file: /general/ca.pem}", ""}} {
+		if _, err := LoadFromBytesWithCredentialReceiver([]byte(strings.Replace(common, change.old, change.new, 1) + declaration)); err == nil {
+			t.Fatal("unsafe receiver declaration accepted", change.old)
+		}
+	}
+}
