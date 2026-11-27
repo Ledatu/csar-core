@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ledatu/csar-core/httpx/clientmetrics"
 	"github.com/ledatu/csar-core/jwtx"
 	"github.com/ledatu/csar-core/tlsx"
 )
@@ -103,6 +104,13 @@ type RouterClient struct {
 // cfg.RouterTimeout is applied to the returned *http.Client; zero means no
 // timeout. The STS internal HTTP client always uses a 30s timeout.
 func NewRouterClient(cfg *ServiceAuthConfig, logger *slog.Logger) (*RouterClient, error) {
+	return NewRouterClientWithMetrics(cfg, logger, nil)
+}
+
+// NewRouterClientWithMetrics enables shared outbound observations in a caller-owned
+// registry. Nil metrics preserves NewRouterClient behavior. Router observations
+// include token acquisition/retry time; STS exchanges are observed separately.
+func NewRouterClientWithMetrics(cfg *ServiceAuthConfig, logger *slog.Logger, metrics *clientmetrics.Metrics) (*RouterClient, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -136,11 +144,11 @@ func NewRouterClient(cfg *ServiceAuthConfig, logger *slog.Logger) (*RouterClient
 		AssertionAudience: cfg.AssertionAudience,
 		KeyPair:           kp,
 		AssertionTTL:      4 * time.Minute,
-		HTTPClient: &http.Client{
+		HTTPClient: clientmetrics.WrapClient(&http.Client{
 			Transport:     stsTransport,
 			CheckRedirect: refuseRedirect,
 			Timeout:       stsInternalTimeout,
-		},
+		}, metrics, clientmetrics.ScopeSTS),
 		Logger: logger,
 	})
 	if err != nil {
@@ -156,7 +164,7 @@ func NewRouterClient(cfg *ServiceAuthConfig, logger *slog.Logger) (*RouterClient
 	}
 
 	return &RouterClient{
-		Client:  client,
+		Client:  clientmetrics.WrapClient(client, metrics, clientmetrics.ScopeRouter),
 		BaseURL: cfg.RouterBaseURL,
 	}, nil
 }

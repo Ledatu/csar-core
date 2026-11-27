@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/ledatu/csar-core/gatewayctx"
+	"github.com/ledatu/csar-core/httpx/clientmetrics"
 	"github.com/ledatu/csar-core/httpx/retryafter"
 )
 
@@ -101,7 +102,7 @@ func DoJSON[T any](ctx context.Context, req *http.Request, opts Options) (T, *Er
 		return zero, cerr
 	}
 	var out T
-	if err := json.Unmarshal(raw, &out); err != nil {
+	if err := clientmetrics.DecodeJSON(opts.Client, raw, &out); err != nil {
 		capped, _ := capBody(raw)
 		return zero, &Error{
 			Status: status,
@@ -157,7 +158,7 @@ func exec(ctx context.Context, req *http.Request, opts Options) ([]byte, int, *E
 
 	hint := retryafter.Parse(resp.Header.Get("Retry-After"), time.Now(), retryafter.MaxDelay)
 	routerStatus, routerWait := routerHints(resp.Header)
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+	raw, readErr := clientmetrics.ReadAll(client, io.LimitReader(resp.Body, maxBytes+1))
 	if readErr != nil {
 		return nil, resp.StatusCode, &Error{
 			Status:     resp.StatusCode,
