@@ -136,6 +136,15 @@ func representation(resp *http.Response) (wireKnown, decodedKnown bool) {
 	if resp.Uncompressed {
 		return false, true
 	}
-	encoding := strings.TrimSpace(resp.Header.Get("Content-Encoding"))
-	return true, encoding == "" || strings.EqualFold(encoding, "identity")
+	// Content-Encoding is a list-valued field and may span multiple header
+	// lines. A first empty/identity line does not hide a later gzip coding.
+	for _, line := range resp.Header.Values("Content-Encoding") {
+		for _, coding := range strings.Split(line, ",") {
+			coding = strings.TrimSpace(coding)
+			if coding != "" && !strings.EqualFold(coding, "identity") {
+				return true, false
+			}
+		}
+	}
+	return true, true
 }

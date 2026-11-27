@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -429,5 +430,77 @@ func TestClientxDefaultClientPhaseHooksAndDisabledAllocations(t *testing.T) {
 	}
 	if h := histogram(t, reg, "csar_client_response_headers_duration_seconds", nil); h.GetSampleCount() != 1 {
 		t.Fatal("header duration missing")
+	}
+}
+
+func TestAllContentEncodingFieldsDetermineDecodedAvailability(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		encoding []string
+		decoded  bool
+	}{
+		{name: "absent", decoded: true},
+		{name: "split_identity", encoding: []string{"identity", "IDENTITY"}, decoded: true},
+		{name: "split_empty", encoding: []string{"", " "}, decoded: true},
+		{name: "empty_then_gzip", encoding: []string{"", "gzip"}},
+		{name: "identity_then_gzip", encoding: []string{"identity", "gzip"}},
+		{name: "gzip_then_identity", encoding: []string{"gzip", "identity"}},
+		{name: "comma_list", encoding: []string{"identity, gzip"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reg, m := setup(t)
+			payload := []byte("representation bytes")
+			c := clientmetrics.WrapClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: 200, Header: http.Header{"Content-Encoding": tc.encoding}, Body: io.NopCloser(bytes.NewReader(payload))}, nil
+			})}, m, clientmetrics.ScopeRouter)
+			got := doRead(t, c, request(t, "GET", "https://router.invalid"))
+			if !bytes.Equal(got, payload) {
+				t.Fatal("observer changed body")
+			}
+			if h := histogram(t, reg, "csar_client_body_bytes", map[string]string{"kind": "wire"}); h.GetSampleSum() != float64(len(payload)) {
+				t.Fatal("wire representation count changed")
+			}
+			decoded := sample(t, reg, "csar_client_body_bytes", map[string]string{"kind": "decoded"})
+			if (decoded != nil) != tc.decoded {
+				t.Fatalf("decoded-known=%v, want%v for all fields%q", decoded != nil, tc.decoded, tc.encoding)
+			}
+			availability := "unknown"
+			if tc.decoded {
+				availability = "known"
+			}
+			observation := sample(t, reg, "csar_client_body_observations_total", map[string]string{"kind": "decoded", "availability": availability})
+			if observation == nil || observation.Counter.GetValue() != 1 {
+				t.Fatalf("incorrect availability for%q", tc.encoding)
+			}
+		})
+	}
+}
+
+type wrappedEOFReader struct{ err error }
+
+func (r wrappedEOFReader) Read([]byte) (int, error) { return 0, r.err }
+
+func TestWrappedEOFRemainsReadFailure(t *testing.T) {
+	reg, m := setup(t)
+	failure := fmt.Errorf("reader failed: %w", io.EOF)
+	c := clientmetrics.WrapClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(wrappedEOFReader{err: failure})}, nil
+	})}, m, clientmetrics.ScopeRouter)
+	resp, err := c.Do(request(t, "GET", "https://router.invalid"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, readErr := io.ReadAll(resp.Body)
+	if readErr != failure {
+		t.Fatalf("original wrapped error changed: %v", readErr)
+	}
+	if err := resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if h := histogram(t, reg, "csar_client_request_duration_seconds", map[string]string{"result": "read_error"}); h.GetSampleCount() != 1 {
+		t.Fatal("wrapped EOF not classified as failure")
+	}
+	if sample(t, reg, "csar_client_body_bytes", map[string]string{"completion": "eof"}) != nil {
+		t.Fatal("wrapped EOF was reported as normal completion")
 	}
 }

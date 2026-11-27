@@ -168,7 +168,9 @@ func (b *observedBody) Read(p []byte) (int, error) {
 	b.readTime += end.Sub(start)
 	if err != nil && b.completion == "" {
 		b.completion = "read_error"
-		if errors.Is(err, io.EOF) {
+		// io.Reader/io.ReadAll treat only the exact EOF sentinel as normal
+		// completion; a wrapped EOF remains an application read failure.
+		if err == io.EOF {
 			b.completion = "eof"
 		}
 		b.end = end
