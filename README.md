@@ -383,3 +383,24 @@ Receivers must use `authnconfig.LoadFromBytesWithProfileAdmission` and enforce
 current admission on issuance, consent and use. Older loaders reject the rule.
 It never prevents authority reduction by owner denial/revocation or refresh-replay
 handling. Policy changes require restart, as with the rest of credential policy.
+
+
+## Streaming response gzip
+
+`httpx/compress.Gzip(handler, compress.Options{})` is an opt-in middleware for
+HTTP 200 JSON responses. It uses pooled gzip.BestSpeed writers and a 1 KiB
+minimum body prefix (configurable from 1–64 KiB). Bodies stream after that decision;
+an explicit flush immediately commits the negotiated encoding, even below
+that threshold. Set Content-Type
+before writing. Non-JSON, HEAD, ranges/partial responses, upgrades, Set-Cookie,
+no-store and request/response no-transform bypass encoding. Existing content
+encodings are preserved; client gzip quality/wildcard preferences are respected.
+
+Apply outside redaction and representation caches. Encoding adds Vary:
+Accept-Encoding, removes the original Content-Length/body digests, and weakens a
+strong ETag; trailers and ResponseController flushing remain available. A normal
+Go HTTP client negotiates and decodes gzip automatically. Explicitly setting
+Accept-Encoding yourself disables that client's automatic decoding. Compression
+is response-only; it does not parse JSON, decompress upstream bodies, or change
+any authentication/STS configuration. Options.OnError can observe finalization
+errors after commitment. Server integration and rollout remain caller-owned.
