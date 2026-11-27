@@ -1,3 +1,13 @@
+## Opt-in streaming response gzip — source only
+
+`httpx/compress` provides pooled BestSpeed JSON response encoding with a bounded
+1 KiB prefix, quality-aware Accept-Encoding and preserved upstream encodings.
+Explicit flushes commit negotiated encoding immediately, even for short prefixes. No-store/no-transform, cookies,
+HEAD/ranges/partial/non-JSON/upgrade responses bypass encoding. Encoding updates
+Vary/length/validators/digests and preserves trailers. Apply outside redaction and
+representation caches; this package activates no service configuration. Native
+HTTP tests cover standard Go decoding, streaming/trailers and finalization errors.
+
 ## Profile-bound public OAuth policy — receiver contract
 
 Optional credentials.public_oauth configures exact public endpoints, profile IDs
