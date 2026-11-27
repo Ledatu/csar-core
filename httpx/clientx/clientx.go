@@ -17,6 +17,7 @@ import (
 
 	"github.com/ledatu/csar-core/gatewayctx"
 	"github.com/ledatu/csar-core/httpx/clientmetrics"
+	"github.com/ledatu/csar-core/httpx/jsonstream"
 	"github.com/ledatu/csar-core/httpx/retryafter"
 )
 
@@ -116,6 +117,23 @@ func DoJSON[T any](ctx context.Context, req *http.Request, opts Options) (T, *Er
 	return out, nil
 }
 
+// DoJSONStream decodes selected array fields element by element. It retains the
+// complete typed page until EOF/size/JSON validation succeeds, returning zero T
+// on failure. HTTP policy and Error envelopes match DoJSON; existing callers
+// remain buffered. Field destinations must be pure DTOs, not business callbacks.
+func DoJSONStream[T any](ctx context.Context, req *http.Request, opts Options, fields func(*T) []jsonstream.Field) (T, *Error) {
+	var out, zero T
+	_, _, cerr := execRead(ctx, req, opts, func(client *http.Client, body io.Reader, limit int64) bodyResult {
+		value, info, err := clientmetrics.DecodeObject(client, body, limit, fields)
+		out = value
+		return bodyResult{raw: info.Prefix, n: info.BytesRead, readErr: info.ReadError, decodeErr: err}
+	})
+	if cerr != nil {
+		return zero, cerr
+	}
+	return out, nil
+}
+
 // DoJSONEmpty issues req and requires a successful status, discarding the
 // response body. It is intended for 204 No Content and similar endpoints.
 func DoJSONEmpty(ctx context.Context, req *http.Request, opts Options) *Error {
@@ -124,6 +142,17 @@ func DoJSONEmpty(ctx context.Context, req *http.Request, opts Options) *Error {
 }
 
 func exec(ctx context.Context, req *http.Request, opts Options) ([]byte, int, *Error) {
+	return execRead(ctx, req, opts, nil)
+}
+
+type bodyResult struct {
+	raw       []byte
+	n         int64
+	readErr   error
+	decodeErr error
+}
+
+func execRead(ctx context.Context, req *http.Request, opts Options, readSuccess func(*http.Client, io.Reader, int64) bodyResult) ([]byte, int, *Error) {
 	client := opts.Client
 	if client == nil {
 		client = http.DefaultClient
@@ -158,7 +187,14 @@ func exec(ctx context.Context, req *http.Request, opts Options) ([]byte, int, *E
 
 	hint := retryafter.Parse(resp.Header.Get("Retry-After"), time.Now(), retryafter.MaxDelay)
 	routerStatus, routerWait := routerHints(resp.Header)
-	raw, readErr := clientmetrics.ReadAll(client, io.LimitReader(resp.Body, maxBytes+1))
+	var result bodyResult
+	if readSuccess != nil && isSuccess(resp.StatusCode, opts.SuccessStatuses) {
+		result = readSuccess(client, resp.Body, maxBytes)
+	} else {
+		result.raw, result.readErr = clientmetrics.ReadAll(client, io.LimitReader(resp.Body, maxBytes+1))
+		result.n = int64(len(result.raw))
+	}
+	raw, readErr := result.raw, result.readErr
 	if readErr != nil {
 		return nil, resp.StatusCode, &Error{
 			Status:     resp.StatusCode,
@@ -171,7 +207,7 @@ func exec(ctx context.Context, req *http.Request, opts Options) ([]byte, int, *E
 		}
 	}
 
-	if int64(len(raw)) > maxBytes {
+	if result.n > maxBytes {
 		origin := classifyResponseOrigin(nil, resp.Header)
 		logOversize(ctx, opts, req, resp.StatusCode, origin)
 		return nil, resp.StatusCode, &Error{
@@ -198,6 +234,14 @@ func exec(ctx context.Context, req *http.Request, opts Options) ([]byte, int, *E
 			Origin:     origin,
 			RetryAfter: responseRetryAfter(hint, raw, origin, resp.StatusCode),
 			CSARStatus: routerStatus, CSARWait: routerWait, RetryAfterHeader: hint,
+		}
+	}
+	if result.decodeErr != nil {
+		capped, _ := capBody(raw)
+		return nil, resp.StatusCode, &Error{
+			Status: resp.StatusCode, Method: req.Method, Path: req.URL.Path,
+			Body: capped, Origin: "client_decode",
+			Err: fmt.Errorf("clientx: decode body: %w", result.decodeErr),
 		}
 	}
 

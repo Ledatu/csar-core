@@ -33,14 +33,16 @@ func scopeLabel(scope Scope) string {
 // No collector is registered globally, and no request URL, error text, account,
 // host or business identifier is used as a metric label.
 type Metrics struct {
-	requestDuration  *prometheus.HistogramVec
-	headerDuration   *prometheus.HistogramVec
-	bodyReadDuration *prometheus.HistogramVec
-	bodyBytes        *prometheus.HistogramVec
-	bodyAvailability *prometheus.CounterVec
-	jsonDuration     *prometheus.HistogramVec
-	jsonBufferBytes  *prometheus.HistogramVec
-	collectors       []prometheus.Collector
+	requestDuration    *prometheus.HistogramVec
+	headerDuration     *prometheus.HistogramVec
+	bodyReadDuration   *prometheus.HistogramVec
+	bodyBytes          *prometheus.HistogramVec
+	bodyAvailability   *prometheus.CounterVec
+	jsonDuration       *prometheus.HistogramVec
+	jsonBufferBytes    *prometheus.HistogramVec
+	jsonStreamDuration *prometheus.HistogramVec
+	jsonStreamBytes    *prometheus.HistogramVec
+	collectors         []prometheus.Collector
 }
 
 // New registers one collector bundle atomically with reg. A nil registerer is
@@ -51,15 +53,17 @@ func New(reg prometheus.Registerer) (*Metrics, error) {
 	}
 	bytesBuckets := []float64{0, 256, 1024, 4096, 16384, 65536, 262144, 1048576, 4194304, 16777216, 67108864, 268435456}
 	m := &Metrics{
-		headerDuration:   prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "csar_client_response_headers_duration_seconds", Help: "Outbound RoundTrip time until response headers/error, including connection/TLS and outer-wrapper authentication/retries where applicable; not provider-only latency.", Buckets: prometheus.DefBuckets}, []string{"scope", "method", "status_class", "result"}),
-		requestDuration:  prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "csar_client_request_duration_seconds", Help: "Outbound HTTP time until body EOF, read error or close, including caller pauses and outer-wrapper authentication/retries; not server latency.", Buckets: prometheus.DefBuckets}, []string{"scope", "method", "status_class", "result"}),
-		bodyReadDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "csar_client_body_read_duration_seconds", Help: "Sum of time inside response-body Read calls, including transport decoding; not pure network time.", Buckets: prometheus.DefBuckets}, []string{"scope", "completion"}),
-		bodyBytes:        prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "csar_client_body_bytes", Help: "Response representation bytes consumed, including caller drains, only when that representation is observable; excludes headers, framing, TLS and hidden retry bodies.", Buckets: bytesBuckets}, []string{"scope", "kind", "completion"}),
-		bodyAvailability: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "csar_client_body_observations_total", Help: "Availability of consumed wire-representation and decoded-representation byte counts; unknown never creates a zero byte sample."}, []string{"scope", "kind", "availability", "completion"}),
-		jsonDuration:     prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "csar_client_json_duration_seconds", Help: "Time inside the shared JSON buffered read or json.Unmarshal helper; excludes business mapping and database work.", Buckets: prometheus.DefBuckets}, []string{"scope", "phase", "result"}),
-		jsonBufferBytes:  prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "csar_client_json_buffer_bytes", Help: "Bytes materialized by the shared JSON read before status/size validation, including a possible limit-plus-one sentinel or partial failed read; excludes later drain bytes.", Buckets: bytesBuckets}, []string{"scope", "result"}),
+		headerDuration:     prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "csar_client_response_headers_duration_seconds", Help: "Outbound RoundTrip time until response headers/error, including connection/TLS and outer-wrapper authentication/retries where applicable; not provider-only latency.", Buckets: prometheus.DefBuckets}, []string{"scope", "method", "status_class", "result"}),
+		requestDuration:    prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "csar_client_request_duration_seconds", Help: "Outbound HTTP time until body EOF, read error or close, including caller pauses and outer-wrapper authentication/retries; not server latency.", Buckets: prometheus.DefBuckets}, []string{"scope", "method", "status_class", "result"}),
+		bodyReadDuration:   prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "csar_client_body_read_duration_seconds", Help: "Sum of time inside response-body Read calls, including transport decoding; not pure network time.", Buckets: prometheus.DefBuckets}, []string{"scope", "completion"}),
+		bodyBytes:          prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "csar_client_body_bytes", Help: "Response representation bytes consumed, including caller drains, only when that representation is observable; excludes headers, framing, TLS and hidden retry bodies.", Buckets: bytesBuckets}, []string{"scope", "kind", "completion"}),
+		bodyAvailability:   prometheus.NewCounterVec(prometheus.CounterOpts{Name: "csar_client_body_observations_total", Help: "Availability of consumed wire-representation and decoded-representation byte counts; unknown never creates a zero byte sample."}, []string{"scope", "kind", "availability", "completion"}),
+		jsonDuration:       prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "csar_client_json_duration_seconds", Help: "Time inside the shared JSON buffered read or json.Unmarshal helper; excludes business mapping and database work.", Buckets: prometheus.DefBuckets}, []string{"scope", "phase", "result"}),
+		jsonBufferBytes:    prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "csar_client_json_buffer_bytes", Help: "Bytes materialized by the shared JSON read before status/size validation, including a possible limit-plus-one sentinel or partial failed read; excludes later drain bytes.", Buckets: bytesBuckets}, []string{"scope", "result"}),
+		jsonStreamDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "csar_client_json_stream_duration_seconds", Help: "Combined bounded element-streaming read and JSON decode elapsed time; includes input waits and decoding, excludes business mapping/database work, not pure CPU time.", Buckets: prometheus.DefBuckets}, []string{"scope", "result"}),
+		jsonStreamBytes:    prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "csar_client_json_stream_bytes", Help: "Input representation bytes consumed by the bounded element-streaming decoder, normally decoded JSON after transport decompression, including partial reads/limit-plus-one sentinel; not buffered bytes, retained heap, accepted business data or a compressed wire measurement.", Buckets: bytesBuckets}, []string{"scope", "result"}),
 	}
-	m.collectors = []prometheus.Collector{m.requestDuration, m.headerDuration, m.bodyReadDuration, m.bodyBytes, m.bodyAvailability, m.jsonDuration, m.jsonBufferBytes}
+	m.collectors = []prometheus.Collector{m.requestDuration, m.headerDuration, m.bodyReadDuration, m.bodyBytes, m.bodyAvailability, m.jsonDuration, m.jsonBufferBytes, m.jsonStreamDuration, m.jsonStreamBytes}
 	if err := reg.Register(m); err != nil {
 		return nil, err
 	}

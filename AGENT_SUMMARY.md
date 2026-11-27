@@ -502,3 +502,12 @@ loaders reject them even on a disabled declaration. Policy/namespace/resource/
 scope fields are strictly validated, with no application defaults. The matching
 Authn receiver enforces gates; this schema does not grant access itself. No DDL,
 Redis/counter, signing-key or deployed configuration changes.
+
+## Bounded element-streaming JSON (source only)
+
+httpx/jsonstream owns typed object/array decoding with whole-document depth and
+body bounds, zero output on error and pure DTO field selection. clientx.DoJSONStream
+shares existing HTTP/error/provenance/cleanup behavior; DoJSON remains buffered.
+clientmetrics.DecodeObject observes combined streaming elapsed/consumed decoded
+bytes separately from old ReadAll/Unmarshal metrics. See httpx/jsonstream/README.md
+for memory and per-value parser diagnostic limits. No retry/protocol change.

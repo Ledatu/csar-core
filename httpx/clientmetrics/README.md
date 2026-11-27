@@ -31,6 +31,8 @@ was observed. A later caller drain is included in byte/read-time accounting.
 | `csar_client_body_bytes` | Bytes actually consumed through the body, including caller drains. Partial/error/early-close results remain explicitly labelled. These exclude TLS/framing/headers and bodies drained inside an inner retry wrapper. |
 | `csar_client_body_observations_total` | Whether `wire` and `decoded` representation byte counts were observable. An unknown representation gets no fake zero-byte histogram sample. |
 | `csar_client_json_duration_seconds` | Shared `ReadAll` or `json.Unmarshal` duration, not business mapping/deduplication/database work. |
+| `csar_client_json_stream_duration_seconds` | Combined bounded element-streaming read/decode elapsed time, including input waits; not pure CPU or a phase to add to transport durations. |
+| `csar_client_json_stream_bytes` | Input representation bytes consumed by the streaming decoder, normally decoded JSON after transport decompression, including partial/error and limit-plus-one reads. Not buffered bytes, retained heap, accepted data or compressed wire size. |
 | `csar_client_json_buffer_bytes` | Bytes buffered by the shared JSON read before status/size validation, possibly partial or limit-plus-one. This is separate from the complete consumed/drained body, and does not mean accepted business data. |
 
 Labels are bounded enums: scope (`router`, `sts`, `other`), standard method or
@@ -79,6 +81,21 @@ DecodeJSON around clientx's existing decode. If a caller subsequently decodes a
 RawMessage into a second typed representation, that separate decode can be
 observed deliberately; the metric records both actual decode calls. Business
 model mapping and database transactions remain outside this package.
+
+`clientx.DoJSONStream` and manual `clientmetrics.DecodeObject` use the separate
+stream families with fixed result labels: `ok`, `read_error`, `too_large`,
+`decode_error`. No old buffered-read or Unmarshal sample is emitted for a streamed
+success-status response. Non-success HTTP bodies retain the existing bounded
+buffered error path. Select a compatible object DTO with `jsonstream.Array` and
+`jsonstream.Value`; see [the decoder contract](../jsonstream/README.md). Streaming
+observations are evidence that the path ran, not a process allocation measurement.
+Existing dashboards must include these new families when following opted-in paths.
+
+```promql
+rate(csar_client_json_stream_bytes_sum{scope="router"}[5m])
+rate(csar_client_json_stream_duration_seconds_sum{scope="router"}[5m])
+rate(csar_client_json_stream_duration_seconds_count{scope="router",result!="ok"}[5m])
+```
 
 Aurum services can opt in once using the shared app option after adopting its
 matching release; deployed binaries gain no instrumentation from publishing a
