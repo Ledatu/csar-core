@@ -404,3 +404,12 @@ Accept-Encoding yourself disables that client's automatic decoding. Compression
 is response-only; it does not parse JSON, decompress upstream bodies, or change
 any authentication/STS configuration. Options.OnError can observe finalization
 errors after commitment. Server integration and rollout remain caller-owned.
+
+### Optional outbound client measurements
+
+[`httpx/clientmetrics`](httpx/clientmetrics/README.md) observes HTTP header/body
+latency and consumed representation bytes with bounded labels. It preserves
+native gzip/retry/error behavior and marks compressed wire bytes unavailable
+when Go has already decoded them. `clientx` adds read/decode phases automatically
+for an instrumented client; `NewRouterClientWithMetrics` is the explicit STS
+entrypoint. No global registry or default activation is introduced.

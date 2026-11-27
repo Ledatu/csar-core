@@ -1,3 +1,14 @@
+## Opt-in outbound client metrics — source only
+
+`httpx/clientmetrics` provides fixed-label, caller-registry HTTP header/body and
+JSON observations. Default clients and transport/gzip/retry/error behavior are
+unchanged. Shared clientx hooks discover instrumented clients automatically;
+`stsclient.NewRouterClientWithMetrics` observes router calls and token exchanges
+separately. Auto-decompressed responses expose decoded bytes and explicitly
+unknown compressed-wire counts; caller drains and JSON buffer sizes are distinct.
+Bodies must be closed. Manual JSON paths require the shared helpers to expose
+that phase. No app option, service image or instrumentation is activated here.
+
 ## Opt-in streaming response gzip — source only
 
 `httpx/compress` provides pooled BestSpeed JSON response encoding with a bounded
