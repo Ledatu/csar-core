@@ -2,9 +2,12 @@ package clientmetrics
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/ledatu/csar-core/httpx/jsonstream"
 )
 
 // ReadAll is io.ReadAll with optional JSON-buffer timing and byte observation.
@@ -25,6 +28,30 @@ func ReadAll(client *http.Client, r io.Reader) ([]byte, error) {
 	m.jsonDuration.WithLabelValues(scope, "read", result).Observe(time.Since(start).Seconds())
 	m.jsonBufferBytes.WithLabelValues(scope, result).Observe(float64(len(raw)))
 	return raw, err
+}
+
+// DecodeObject observes element-streaming separately from buffered JSON helpers.
+// Read and parse overlap, so its elapsed duration must not be interpreted as CPU
+// time or added to transport/body-read timing. The caller owns body cleanup.
+func DecodeObject[T any](client *http.Client, r io.Reader, maxBytes int64, fields func(*T) []jsonstream.Field) (T, jsonstream.Info, error) {
+	m, scope := source(client)
+	if m == nil {
+		return jsonstream.DecodeObject(r, maxBytes, fields)
+	}
+	start := time.Now()
+	out, info, err := jsonstream.DecodeObject(r, maxBytes, fields)
+	result := "ok"
+	switch {
+	case info.ReadError != nil:
+		result = "read_error"
+	case errors.Is(err, jsonstream.ErrTooLarge):
+		result = "too_large"
+	case err != nil:
+		result = "decode_error"
+	}
+	m.jsonStreamDuration.WithLabelValues(scope, result).Observe(time.Since(start).Seconds())
+	m.jsonStreamBytes.WithLabelValues(scope, result).Observe(float64(info.BytesRead))
+	return out, info, err
 }
 
 // DecodeJSON is json.Unmarshal with opt-in timing from the instrumented client.

@@ -65,6 +65,27 @@ func TestNegotiationAndRepresentation(t *testing.T) {
 	}
 }
 
+func TestFactoryPreservesAllUpstreamEncodingLines(t *testing.T) {
+	wrap := GzipMiddleware(Options{})
+	for _, coding := range []string{"gzip", "br", "identity"} {
+		payload := bytes.Repeat([]byte("already-encoded-fixture"), 512)
+		h := wrap(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header()["Content-Encoding"] = []string{"", "  ", coding}
+			_, _ = w.Write(payload)
+		}))
+		for range 2 {
+			req := httptest.NewRequest(http.MethodGet, "/arbitrary-installation", nil)
+			req.Header.Set("Accept-Encoding", "gzip")
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if !bytes.Equal(rec.Body.Bytes(), payload) || strings.Join(rec.Header().Values("Content-Encoding"), ",") != ",  ,"+coding {
+				t.Fatal("existing encoding was transformed", rec.Header())
+			}
+		}
+	}
+}
+
 func TestBypasses(t *testing.T) {
 	for _, tc := range []struct {
 		name, method string
