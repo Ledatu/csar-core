@@ -522,3 +522,9 @@ httpx/compress.GzipMiddleware reuses an encoder pool when a caller selects a
 configured route at dispatch. It does not infer server policy from URL, identity,
 cache status or Accept-Encoding. Existing Gzip(next, opts) stays compatible. All
 Content-Encoding lines prevent recompression, including later nonempty lines.
+
+## Bounded binary client responses
+
+`httpx/clientx.DoBytes` reuses the existing client execution, byte bounds,
+error provenance and body cleanup for binary owner responses. It returns no
+partial document on failure and introduces no retry behavior.

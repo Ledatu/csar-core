@@ -141,6 +141,17 @@ func DoJSONEmpty(ctx context.Context, req *http.Request, opts Options) *Error {
 	return cerr
 }
 
+// DoBytes reads a bounded successful binary response using the same transport,
+// error provenance and body lifecycle as DoJSON. No partial body is returned on
+// error, and this operation does not introduce retries.
+func DoBytes(ctx context.Context, req *http.Request, opts Options) ([]byte, *Error) {
+	body, _, err := exec(ctx, req, opts)
+	if err != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
 func exec(ctx context.Context, req *http.Request, opts Options) ([]byte, int, *Error) {
 	return execRead(ctx, req, opts, nil)
 }
