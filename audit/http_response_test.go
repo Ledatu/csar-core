@@ -35,7 +35,7 @@ func TestHTTPResponseOmissionsAndBudget(t *testing.T) {
 		{"html", "text/html", "", "<html>secret</html>", "content_type", "omitted", true},
 		{"invalid", "application/json", "", `{"password":"`, "invalid_json_envelope", "omitted", true},
 		{"partial", "application/json", "", `{"message":"password=abc`, "inspection_limit", "omitted", false},
-		{"gzip", "application/json", "gzip", "bytes", "content_encoding", "omitted", true},
+		{"invalid gzip", "application/json", "gzip", "bytes", "invalid_gzip", "omitted", true},
 		{"business", "application/json", "", `{"customer":"private"}`, "no_error_fields", "omitted", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
