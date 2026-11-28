@@ -27,6 +27,14 @@ type Options struct {
 // It does not decompress requests or upstream responses, or enable itself in
 // any server. Apply it outside response transforms and representation caches.
 func Gzip(next http.Handler, opts Options) http.Handler {
+	return GzipMiddleware(opts)(next)
+}
+
+// GzipMiddleware creates an explicitly enabled middleware factory. Reuse the
+// factory when choosing handlers at dispatch time to retain the encoder pool.
+// Client encoding support only negotiates an enabled policy; it does not opt in
+// a server, route, URL convention or cache hit to compression.
+func GzipMiddleware(opts Options) func(http.Handler) http.Handler {
 	minBytes := opts.MinBytes
 	if minBytes < 1 || minBytes > 64<<10 {
 		minBytes = 1 << 10
@@ -37,24 +45,26 @@ func Gzip(next http.Handler, opts Options) http.Handler {
 		zw, _ := gzip.NewWriterLevel(io.Discard, gzip.BestSpeed)
 		return zw
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodHead || r.Header.Get("Range") != "" ||
-			r.Header.Get("Upgrade") != "" || directive(strings.Join(r.Header.Values("Cache-Control"), ","), "no-transform") {
-			next.ServeHTTP(w, r)
-			return
-		}
-		cw := &writer{ResponseWriter: w, minBytes: minBytes, accept: acceptsGzip(r.Header.Values("Accept-Encoding")), pool: &pool}
-		defer func() {
-			if cw.gz != nil {
-				cw.gz.Reset(io.Discard)
-				pool.Put(cw.gz)
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodHead || r.Header.Get("Range") != "" ||
+				r.Header.Get("Upgrade") != "" || directive(strings.Join(r.Header.Values("Cache-Control"), ","), "no-transform") {
+				next.ServeHTTP(w, r)
+				return
 			}
-		}()
-		next.ServeHTTP(cw, r)
-		if err := cw.finish(); err != nil && opts.OnError != nil {
-			opts.OnError(err)
-		}
-	})
+			cw := &writer{ResponseWriter: w, minBytes: minBytes, accept: acceptsGzip(r.Header.Values("Accept-Encoding")), pool: &pool}
+			defer func() {
+				if cw.gz != nil {
+					cw.gz.Reset(io.Discard)
+					pool.Put(cw.gz)
+				}
+			}()
+			next.ServeHTTP(cw, r)
+			if err := cw.finish(); err != nil && opts.OnError != nil {
+				opts.OnError(err)
+			}
+		})
+	}
 }
 
 type writer struct {
@@ -81,7 +91,7 @@ func (w *writer) WriteHeader(code int) {
 	}
 	w.code = code
 	if !w.eligible() {
-		if code == http.StatusNotModified || w.Header().Get("Content-Encoding") != "" {
+		if code == http.StatusNotModified || hasContentEncoding(w.Header()) {
 			varyEncoding(w.Header())
 		}
 		w.start(false)
@@ -93,13 +103,22 @@ func (w *writer) WriteHeader(code int) {
 
 func (w *writer) eligible() bool {
 	h := w.Header()
-	if w.code != http.StatusOK || h.Get("Content-Encoding") != "" || h.Get("Content-Range") != "" ||
+	if w.code != http.StatusOK || hasContentEncoding(h) || h.Get("Content-Range") != "" ||
 		len(h.Values("Set-Cookie")) > 0 || directive(strings.Join(h.Values("Cache-Control"), ","), "no-transform") ||
 		directive(strings.Join(h.Values("Cache-Control"), ","), "no-store") {
 		return false
 	}
 	mediaType, _, err := mime.ParseMediaType(h.Get("Content-Type"))
 	return err == nil && (mediaType == "application/json" || strings.HasSuffix(mediaType, "+json"))
+}
+
+func hasContentEncoding(h http.Header) bool {
+	for _, line := range h.Values("Content-Encoding") {
+		if strings.TrimSpace(line) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (w *writer) Write(body []byte) (int, error) {

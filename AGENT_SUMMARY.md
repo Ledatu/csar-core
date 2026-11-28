@@ -511,3 +511,10 @@ shares existing HTTP/error/provenance/cleanup behavior; DoJSON remains buffered.
 clientmetrics.DecodeObject observes combined streaming elapsed/consumed decoded
 bytes separately from old ReadAll/Unmarshal metrics. See httpx/jsonstream/README.md
 for memory and per-value parser diagnostic limits. No retry/protocol change.
+
+## Explicit compression middleware factory (source only)
+
+httpx/compress.GzipMiddleware reuses an encoder pool when a caller selects a
+configured route at dispatch. It does not infer server policy from URL, identity,
+cache status or Accept-Encoding. Existing Gzip(next, opts) stays compatible. All
+Content-Encoding lines prevent recompression, including later nonempty lines.
