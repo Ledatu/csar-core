@@ -283,9 +283,13 @@ does not report a false zero. Tests use an isolated localhost PostgreSQL databas
 named `csar_audit_test`; never point the integration fixture at production.
 
 `CaptureHTTPResponse` produces version 1 `metadata.http_response` diagnostics
-for a final HTTP error. Producers must bound inspection to 64 KiB and pass known
-credential values. Only complete JSON error envelopes are eligible: a fixed
-allowlist selects code/message/error fields, built-in and route redaction remove
+for a final HTTP error. Producers must bound the captured representation to
+64 KiB and pass known credential values. Plain and gzip JSON are supported;
+gzip decoding has an independent 64 KiB limit and validates all member trailers
+before any diagnostic is retained. Corrupt/truncated gzip yields `invalid_gzip`,
+encoded/decoded overflow yields `inspection_limit`, and other or stacked
+encodings yield `content_encoding`. Only complete JSON error envelopes are
+eligible: a fixed allowlist selects code/message/error fields, built-in and route redaction remove
 sensitive keys, and `jsonredact.RedactText` masks common credentials and email
 addresses in retained strings. Arbitrary payload fields, HTML, invalid/partial
 JSON and unsupported encodings are omitted with a reason; there is no raw-prefix

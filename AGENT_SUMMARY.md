@@ -388,6 +388,10 @@ not a new shared locking primitive. Dry-run does not need this endpoint.
 - `audit/http_response.go` owns version 1 `metadata.http_response`, JSON diagnostic
   allowlist, mandatory redaction, 64 KiB inspection/4 KiB body budgets and explicit
   omission/truncation states. No raw incomplete/HTML/text fallback is stored.
+- Plain/gzip envelopes share the sanitizer. Gzip inspection independently caps
+  encoded and decoded bodies at 64 KiB, validates all members/checksums and omits
+  corrupt or oversized data. Observation byte counts remain producer-supplied;
+  no forwarding, protocol, schema or retry policy changes.
 - Producers capture only final errors on opt-in routes and supply known secrets;
   `jsonredact.RedactText` masks reflected credentials, cookies, URL credentials,
   JWTs and email addresses. It is not a universal PII classifier.

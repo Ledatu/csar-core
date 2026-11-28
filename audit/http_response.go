@@ -1,7 +1,10 @@
 package audit
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
+	"io"
 	"mime"
 	"strings"
 	"unicode/utf8"
@@ -56,14 +59,17 @@ func CaptureHTTPResponse(in *HTTPResponseInput) HTTPResponse {
 	if err == nil {
 		out.ContentType = clipDiagnostic(ct, 128)
 	}
-	switch {
-	case !in.Complete || len(in.Body) > MaxHTTPInspectBytes:
+	if !in.Complete || len(in.Body) > MaxHTTPInspectBytes {
 		out.OmissionReason = "inspection_limit"
 		return out
-	case in.ContentEncoding != "" && !strings.EqualFold(in.ContentEncoding, "identity"):
-		out.OmissionReason = "content_encoding"
+	}
+	body, reason := inspectHTTPResponseBody(in.Body, in.ContentEncoding)
+	if reason != "" {
+		out.OmissionReason = reason
 		return out
-	case len(in.Body) == 0:
+	}
+	switch {
+	case len(body) == 0:
 		out.State = "empty"
 		return out
 	case ct != "application/json" && !strings.HasSuffix(ct, "+json"):
@@ -72,7 +78,7 @@ func CaptureHTTPResponse(in *HTTPResponseInput) HTTPResponse {
 	}
 	// Always apply built-in sensitive keys, including when a route supplies
 	// additional sensitive fields. RedactText also handles reflected credentials.
-	redacted, err := jsonredact.ParseAndRedactJSON(in.Body, jsonredact.Config{PathFields: in.Redact.PathFields})
+	redacted, err := jsonredact.ParseAndRedactJSON(body, jsonredact.Config{PathFields: in.Redact.PathFields})
 	if err == nil && len(in.Redact.SensitiveKeys) > 0 {
 		redacted, err = jsonredact.ParseAndRedactJSON(redacted, in.Redact)
 	}
@@ -99,7 +105,7 @@ func CaptureHTTPResponse(in *HTTPResponseInput) HTTPResponse {
 	}
 	out.Code = clipDiagnostic(out.Code, 256)
 	out.Message = clipDiagnostic(out.Message, 1024)
-	body, err := json.MarshalIndent(safe, "", "  ")
+	body, err = json.MarshalIndent(safe, "", "  ")
 	if err != nil {
 		out.OmissionReason = "encoding_error"
 		return out
@@ -114,6 +120,31 @@ func CaptureHTTPResponse(in *HTTPResponseInput) HTTPResponse {
 		out.State = "truncated"
 	}
 	return out
+}
+
+// Inspection never expands an encoded diagnostic beyond the independent JSON
+// budget. Reading through EOF validates gzip trailers and every member before
+// any decoded prefix can reach the sanitizer.
+func inspectHTTPResponseBody(body []byte, encoding string) ([]byte, string) {
+	switch {
+	case encoding == "" || strings.EqualFold(strings.TrimSpace(encoding), "identity"):
+		return body, ""
+	case !strings.EqualFold(strings.TrimSpace(encoding), "gzip"):
+		return nil, "content_encoding"
+	}
+	zr, err := gzip.NewReader(bytes.NewReader(body))
+	if err != nil {
+		return nil, "invalid_gzip"
+	}
+	decoded, err := io.ReadAll(io.LimitReader(zr, MaxHTTPInspectBytes+1))
+	closeErr := zr.Close()
+	if len(decoded) > MaxHTTPInspectBytes {
+		return nil, "inspection_limit"
+	}
+	if err != nil || closeErr != nil {
+		return nil, "invalid_gzip"
+	}
+	return decoded, ""
 }
 
 func safeErrorFields(object map[string]json.RawMessage, secrets []string, depth int) (map[string]any, bool) {
